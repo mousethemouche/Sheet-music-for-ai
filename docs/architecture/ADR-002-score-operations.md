@@ -68,6 +68,9 @@ The v1 operation set is intentionally small. It should describe user intent, not
 
 - `set_tempo`
 - `set_time_signature`
+- `set_key_signature`
+- `set_tonal_context`
+- `set_playback_feel`
 - `set_title`
 - `set_tags`
 
@@ -93,6 +96,15 @@ Targets may reference the whole score or explicit stable IDs such as staff/measu
 - `remove_harmonic_analysis`
 - `set_fingering`
 - `remove_fingering`
+- `set_articulations`
+- `add_slur`
+- `remove_slur`
+- `set_dynamic`
+- `remove_dynamic`
+- `set_pedal`
+- `remove_pedal`
+- `set_scale_degree`
+- `remove_scale_degree`
 - `add_annotation`
 - `update_annotation`
 - `remove_annotation`
@@ -105,6 +117,9 @@ These operations target stable domain IDs. They MUST NOT contain renderer coordi
 type ScoreOperation =
   | { type: "set_tempo"; bpm: number }
   | { type: "set_time_signature"; numerator: number; denominator: number }
+  | SetKeySignatureOperation
+  | SetTonalContextOperation
+  | SetPlaybackFeelOperation
   | { type: "set_title"; title: string | null }
   | { type: "set_tags"; tags: string[] }
   | InsertMeasuresOperation
@@ -221,6 +236,8 @@ We will NOT initially add one operation for every possible note-level edit. In p
 - unrestricted JSON Patch
 
 If a natural-language edit cannot be expressed cleanly by the v1 semantic operations, `replace_measures` is the safe generative fallback for the affected musical passage.
+
+Tuplet changes, pickup/incomplete-measure rewrites, and other deeply rhythmic edits may use `replace_measures` rather than requiring low-level note-array patch operations.
 
 Additional note-level operations may be introduced later only when repeated real product use cases justify them.
 
