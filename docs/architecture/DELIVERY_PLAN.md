@@ -1,159 +1,72 @@
-# MVP Technical Delivery Plan
+# MVP technical delivery plan
 
-This document orders the implementation backlog so a coding agent can work through the repository without rediscovering architecture.
+Updated 2026-09-28. Build plan and test requirements, not completed implementation.
 
-## Phase 0 — Product + architecture specs
+## Read first
 
-Already defined:
+Product: PRD, STORY_MAP and USER_STORIES. Architecture: ADR-001–006 (ScoreSpec, operations, monorepo/MCP, renderer/playback, multi-user auth, persistent drafts).
 
-- PRD / Story Map / User Stories
-- ADR-001 — ScoreSpec v1
-- ADR-002 — ScoreOperations v1
-- ADR-003 — Monorepo boundaries and MCP as inbound adapter
-- ADR-004 — Independent rendering and playback pipelines
-- ADR-005 — Multi-user authentication with Supabase Auth and OAuth 2.1 for MCP
+Testing authority: [TEST_PLAN](../testing/TEST_PLAN.md) and [MCP–UI integration](../testing/MCP_UI_TEST_PROCESS.md). These replace older cumulative test checklists. One risk has one primary test owner; reference existing executable evidence from another issue instead of writing the same suite again. Features and approved P-01/P-02/P-03 are not reduced.
 
-## Phase 1 — Repository foundation
+## 1. Foundation and test harness
 
-1. **#4 — Scaffold pnpm monorepo with architectural package boundaries**
-2. **#17 — Add CI quality gates and architecture boundary tests**
-3. **#19 — Add structured errors, logging and basic observability** (start minimal, extend throughout)
-4. **#24 — Add MCP/API input limits and security hardening** (start schema-level protections early)
+#4 monorepo; #17 CI/boundaries; #18 shared fixtures/harness. Start #19 shared errors and #24 safe input/middleware as their boundaries appear.
 
-Exit criteria:
-- clean install/build/test/lint;
-- architectural dependency rules enforced automatically.
+Exit: clean install/build/typecheck/lint; separate fast Vitest unit/component command and actual integration command; inward dependencies checked once. No required dummy tests for empty packages or custom coverage framework.
 
-## Phase 2 — Canonical music core
+## 2. Music core
 
-1. **#2 — Implement ScoreSpec v1 canonical music-domain contract**
-2. **#3 — Implement ScoreOperations v1 mutation contract**
-3. **#8 — Implement CreateScore application use case**
+#2 ScoreSpec/runtime rules and completion of precise music semantics; #3 typed ScoreOperations; #8 CreateScore orchestration.
 
-Exit criteria:
-- scores can be created and edited in pure TypeScript tests with no browser, database, MCP, VexFlow or SpessaSynth dependency.
+Exit: valid fixtures, immutable operations and structured failures tested in pure TypeScript. Application can use repository doubles in units; production draft creation is wired in phase3, never memory-only. Do not copy the full music-validation matrix to MCP or React tests.
 
-## Phase 3 — Rendering and playback vertical
+## 3. Independent tracks: media and server foundations
 
-These can proceed largely in parallel after ScoreSpec fixtures exist:
+After core contracts, proceed in parallel where dependencies allow:
 
-1. **#5 — Implement VexFlow renderer adapter**
-2. **#6 — Implement playback compiler + SpessaSynth adapter**
-3. **#23 — Select/document commercially usable piano SoundFont**
-4. **#7 — Build reusable React ScorePlayer UI + annotations**
+- Media: #5 VexFlow adapter; #6 neutral compiler/synth; #23 piano asset; #7 ScorePlayer. Asset selection/configuration does not wait for finished audio/deployment. Adapter unit tests and provisional actual-runtime checks can run before MCP host exists; consolidate actual checks into the shared host harness later.
+- Identity/data: #20 auth umbrella; #25 web auth; #9 repository/migrations; #22 persistent drafts/TTL/promotion; #27 RLS. These tests use one isolated stack, not production.
+- MCP foundation: #11 server/resource/View skeleton and #26 HTTP OAuth protection can be built together once neutral use-case ports exist. Do not make umbrella completion a circular blocker on its children.
 
-Exit criteria:
-- one canonical ScoreSpec fixture renders and plays;
-- play/pause/tempo/loop work;
-- noteId synchronization works;
-- same-color note annotations + text render cleanly.
+Exit: actual rendered/playable fixture; trusted owner principal; durable private draft repository. Detailed behavior tests stay in their owning issues.
 
-## Phase 4 — Auth foundation
+## 4. Conversational and saved-library integration
 
-Because the MVP is shared with external testers, real multi-user auth is part of the first testable architecture rather than a post-MVP add-on.
+#12 create_score; #13 edit_score; #10 save/get/search use cases; #14 library MCP tools; #21 saved HTTP routes; #15 minimal React library.
 
-1. **#20 — Implement multi-user authentication and authorization boundary** (umbrella)
-2. **#25 — Build signup/login/logout/password-recovery UI with Supabase Auth**
-3. **#26 — Protect remote MCP with Supabase OAuth 2.1 and map tokens to UserId**
+Tests delivered alongside features:
 
-Exit criteria:
-- tester can create/sign into an account;
-- remote MCP can authenticate the same account;
-- all inbound adapters resolve a neutral application UserId.
+- ONE FLOW-01 (#18): actual MCP create/get/edit/save/search -> REST list/get -> saved edit, with named route assertions.
+- ONE ACCESS-01 (#18): route/tool-level owner-isolation matrix.
+- Focused route-specific failures in #12–14/#21; shared auth/errors stay #26/#19.
+- THREE MCP–UI integration cases (#11): real resource/create path, actual update path, error/context/teardown. This is not an extra E2E/host category.
 
-## Phase 5 — MCP vertical slice
+Exit: accepted product loop and public contracts verified without duplicating them at application, repository, host and E2E levels. No permanent save before human approval; draft state is explicitly temporary.
 
-1. **#11 — Implement MCP server and MCP Apps score View shell**
-2. **#12 — Expose create_score MCP tool**
-3. **#22 — Resolve unsaved draft lifecycle**
-4. **#13 — Expose edit_score MCP tool**
+## 5. Deployment and release verification
 
-Exit criteria:
-- from a compliant AI host, authenticated user creates a score, inline View renders/plays it, and a later conversational edit updates the same logical artifact.
+#16 workspace/runtime/environment/asset configuration, plus production details of #19/#24. Reuse existing integration harness with preview URLs/test data rather than create another full regression suite.
 
-This is the first major conversational MVP milestone.
+Run all relevant owned suites and the same small MCP–UI integration before release. Preserve actual migration/CAS/promotion/expiry/RLS checks; screenshots/100% line coverage do not replace them.
 
-## Phase 6 — Persistence and library
+One narrow actual target-host compatibility check is shared by deployment/auth: connect, display/play, edit, decline/approve save, retrieve. Required for first external release and relevant host/auth/SDK changes, not a full owner recipe every PR. Inspector/reference-host checks are diagnostic when needed, not duplicate permanent gates. Record unavailable authorized host access honestly.
 
-1. **#9 — Implement score repository ports + JSONB persistence**
-2. **#27 — Add owner-scoped persistence and Supabase RLS policies**
-3. **#10 — Implement SaveScore/GetScore/SearchScores use cases**
-4. **#14 — Expose save_score/get_score/search_scores MCP tools**
-5. **#21 — Implement minimal NestJS HTTP library adapter**
-6. **#15 — Build minimal React saved-score library**
+## Test ownership and parallel execution
 
-Exit criteria:
-- explicit save only;
-- saved score can be searched/reopened;
-- cross-user access is blocked at application and database layers.
+#18 and #20 are harness/umbrella work, NOT late new test phases. Tests belong to the feature or boundary that owns the failure:
 
-## Phase 7 — Production/deployment
+- #2 schema, #3 operations;
+- #5 renderer mapping, #6 timeline/engine, #7 UI revision policy;
+- #9 database search/CAS/migrations, #22 TTL/promotion/cleanup, #27 limited-role RLS;
+- #11 MCP setup and MCP–UI integration, #12–14/#21 route-specific behavior;
+- #25 web auth, #26 verifier/authorization, #19 shared errors, #24 request protection.
 
-1. **#16 — Vercel deployment configuration**
-2. Finish production parts of **#19** observability
-3. Finish public-deployment parts of **#24** security
+Share one test DB per CI job with isolated data and bounded workers. Unit/components are browser-free; only actual iframe/adapter integration needs a browser. Do not run every fixture × route × viewport. Shared contract/auth/lockfile changes trigger dependent tests; documentation-only changes do not start heavy services.
 
-Exit criteria:
-- web/API/MCP are deployable and production URLs/assets work;
-- secrets stay server-side;
-- MCP UI resources and SoundFont resolve correctly.
+## Coding-agent completion rule
 
-## Phase 8 — Acceptance suite
+Each implementation PR states its unique risk, test location/result and reused evidence. A test is useful if it distinguishes correct behavior from a plausible failure not already caught at the same boundary. Do not add pass-through controller/getter/mock-call tests where actual integration already covers them. Additional tests are welcome for a distinct branch, security boundary or reproduced bug; no arbitrary count quota.
 
-1. **#18 — Create MVP automated acceptance test suite**
+Unanswered engineering details in #2/#3 must be made explicit, not hidden behind optional fields. Product decisions already settled: real multi-user auth, seven-day update-based drafts, P-01 stop/load/paused on new revision, P-02 deterministic audible expression/legato, P-03 reject conflicting note colors. Do not ask the owner to reconfirm them.
 
-The acceptance suite should be developed incrementally earlier, but this phase finalizes the complete cross-layer flow.
-
-Golden product flow:
-
-1. tester signs in;
-2. AI creates an 8-bar piano exercise;
-3. score contains a simple pedagogical colored-note annotation;
-4. inline renderer displays it;
-5. playback starts;
-6. tempo changes;
-7. loop is enabled;
-8. AI changes the same score;
-9. stable identity/revision behavior is verified;
-10. user explicitly saves;
-11. user later retrieves and reopens the score;
-12. a second user cannot access that score.
-
-## Parallelization guidance
-
-Safe parallel work after Phase 1:
-
-```text
-                 ScoreSpec (#2)
-                /      |       \
-               v       v        v
-       Renderer #5  Playback #6  Operations #3
-               \       /          |
-                v     v            v
-               Score UI #7      CreateScore #8
-                    \             /
-                     v           v
-                      MCP vertical
-
-Auth #25/#26 can proceed in parallel once scaffold #4 exists.
-```
-
-Do not parallelize work that changes the canonical ScoreSpec shape without coordinating its fixtures and schemas.
-
-## Agent execution rule
-
-Each implementation issue should be completed with:
-- tests;
-- typecheck/lint;
-- no forbidden dependency violations;
-- a short implementation note explaining important decisions;
-- no expansion beyond the issue's explicit scope without opening/following a new issue.
-
-## Known blockers requiring product-owner decisions
-
-- **#22 unsaved draft lifecycle**
-- musical golden fixtures for **#18**
-
-Identity/auth is now decided by ADR-005.
-
-Everything else can proceed from the existing specs.
+Remaining human/host evidence concerns actual unseen music/sound/readability and trusted save approval, not permission to postpone automated tests. Green fixtures do not establish arbitrary AI creativity or guarantee all third-party host behavior.
