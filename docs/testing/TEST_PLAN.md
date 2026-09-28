@@ -39,9 +39,9 @@ Create `packages/test-fixtures`. Do NOT calculate expected results by calling th
 | F05 spelling | F#4 and Gb4 both MIDI 66 but different written pitch; key signature must not apply alteration twice |
 | F06 rhythm | Three eighth triplets (3:2) total 960 ticks, each 320; five eighth quintuplets (5:4) total 1920, each 384; ordinary seventh-based ratios require exact rational timing / an explicit conversion policy |
 | F07 pickup | A quarter-note pickup has actual duration 960, not 3840; both hands advance together; reject unexplained gaps/overfill |
-| F08 expression | Tie versus phrasing slur, fingerings, accent/staccato/tenuto/marcato, p/mf/f, hairpins and sustain spans |
-| F09 teaching | Three notes #ff5ca8, matching short text, melodic degrees 1/b3/5; unselected notes unaffected |
-| F10 swing | Explicit eighth swing 2:1: pair starts 0/640 and total 960; straight starts 0/480; written durations unchanged; explicit tuplets not swung twice |
+| F08 expression | Tie versus phrasing slur, fingerings, accent/staccato/tenuto/marcato, p/mf/f, hairpins and sustain spans; paired slurred/unmarked examples verify audible legato |
+| F09 teaching | Three notes #ff5ca8, matching short text, melodic degrees 1/b3/5; unselected notes unaffected; conflicting-color negative fixture targets the same note twice |
+| F10 swing | Explicit or default-requested eighth swing 2:1: pair starts 0/640 and total 960; straight starts 0/480; written durations unchanged; explicit tuplets not swung twice |
 | F11 limits | 1/32/33 aligned measures, 0/1/2/3 staves, 0/4/5 annotations, invalid references, unknown properties, oversized input |
 | F12 lifecycle | Users A/B; A/B drafts and saved scores; expired and live drafts; same timestamps for stable sorting; old stored contract fixtures when a real older version exists |
 
@@ -62,6 +62,7 @@ Provide combined feature fixtures too: triplets + swing + pickup; two hands + pe
 | Accepted extended notation | #2 SPEC; #3 OPS; #5 REN; #6 AUDIO |
 | Accepted multi-user flows | #20 AUTH; #25 AUTH-UI; #26 OAUTH; #27 RLS |
 | Accepted draft TTL/deploy survival | #22 DRAFT; #16 DEPLOY |
+| Accepted P-01/P-02/P-03 | #2 SPEC; #3 OPS; #6 AUDIO; #7 UI; #13 MCP-EDIT; #18 FLOW |
 | Architecture/security/regression gates | #4 BUILD; #17 CI; #19 ERR; #23 ASSET; #24 SEC |
 
 The language model decides what music to generate and when to suggest saving. A fixed tool integration scenario verifies software behavior, not musical creativity or arbitrary model compliance. Keep a few real-host acceptance conversations separately: ask, play, edit, decline save, confirm save, retrieve.
@@ -117,17 +118,58 @@ Common mutation postconditions: failed command leaves score content, revision, T
 - Pin versions and use frozen-lockfile installs. An upgrade PR must pass adapter/integration tests. Upstream VexFlow tests do not validate our chosen options, custom overlays or host iframe integration.
 - No claim of universal non-regression or musical correctness from a green test run. Each approved expected result is reviewed independently; do not regenerate it merely because a test fails.
 
-## 8. Decisions still requiring clarification
+## 8. Product policies accepted on 2026-09-28
 
-These are not permission to invent product behavior. Isolate affected tests; unrelated work can proceed. Record owner answers before marking the corresponding feature complete.
+The owner validated P-01, P-02 and P-03. These are mandatory MVP behaviors, no longer open product questions. Keep their existing test IDs; do not skip their cases as awaiting confirmation. Acceptance here means the behavior is specified, not that implementation/tests already pass.
 
-**P-01 — Editing during playback.** Proposed: stop old audio, load the new revision at tick 0, remain paused until Play. Alternative: resume automatically. #6/#7/#13 need one explicit policy.
+### P-01 — Replace a playing score: stop, load, remain paused
 
-**P-02 — Expressive playback defaults.** Proposed: swing defaults to 2:1 eighths when no ratio is given, no swing on explicit tuplets; versioned deterministic velocity/gate mappings for dynamics/articulations, no random humanization. Whether a phrasing slur changes gate times or is display-only needs agreement. Explicit ratio/math tests can be written now. Avoid presenting one velocity table as a universal musical law.
+When the UI accepts a newer canonical revision of the active score, stop the previous audio and release scheduled notes/pedal, load the new revision at tick 0, and remain paused. Only an explicit Play action starts the new revision. No automatic resume, including when loop was enabled.
 
-**P-03 — Conflicting teaching colors.** Proposed: two annotations cannot impose different colors on the same note; return an actionable validation conflict rather than silently using last-wins. Disjoint colors are already required.
+This applies to an accepted replacement, not a pending model request. A rejected edit, duplicate/older revision or local tempo-slider change does not count as a new canonical revision. The server must never control renderer/synth state directly.
 
-**Security clarification, not a repeated consent question:** explicit human approval is already required. A model-supplied `confirmed: true` is NOT evidence of a human action. #14/#18 must distinguish software tests of an explicit save command from host acceptance of the user's approval. Document target-host approval support; if a strict server-verifiable guarantee is required, choose trusted UI/host approval binding to owner + score + revision. Do not add a fake test claiming the backend can read the conversation.
+Required cases:
+- **P01-01:** during playback at a nonzero tick, receive revision r+1; old audio stops before the new score is presented as active, new plan and cursor start at 0, and no play call occurs until user action.
+- **P01-02:** same transition while paused or looping; remain paused at 0, no stuck pedal/notes and no loop-induced restart.
+- **P01-03:** delayed r or duplicate r+1 result cannot reset/reload/restart the current accepted revision; rapid r+1/r+2 loads cannot let the earlier completion win.
+- **P01-04:** invalid incoming result or rejected edit preserves the last valid state. If applying an accepted revision fails locally, stop audio, show a recoverable error and do not claim the new version is playing. Never play an old plan under newly displayed notation.
+- **P01-05:** local playback tempo control continues to use its existing live multiplier behavior; it does not create a revision or trigger the replacement policy.
+
+### P-02 — Deterministic audible expression, including phrasing legato
+
+No feel specified means straight playback. When swing is explicitly requested without a ratio, use 2:1; eighths are the default subdivision when not otherwise specified. An explicit supported ratio/subdivision overrides the defaults. Preserve written durations, total bar duration and explicit tuplets (do not swing tuplets twice).
+
+Accents are audibly stronger, staccatos shorter, dynamics and crescendo/diminuendo audible. Phrasing slurs ALSO produce an audible legato effect; they are not display-only. There is no random humanization.
+
+A slur connects successive performed notes within the addressed musical voice, without merging distinct note attacks into a tie, altering pitches/notated rhythm, erasing written rests or adding implicit sustain pedal. Ties keep their separate same-pitch continuity semantics. Explicit articulation and pedal interactions must have one documented deterministic precedence.
+
+The owner approved these behaviors, not an exact MIDI velocity table or millisecond overlap. Select, document and version the engineering gate/velocity/precedence constants in the playback policy implementation. Add independent expected values for that chosen policy; do not leave the feature as a product-question placeholder or attribute arbitrary numeric constants to the owner.
+
+Required cases:
+- **P02-01:** straight eighth pair at PPQ960 starts 0/480; requested swing with omitted ratio equals explicit 2:1 and starts 0/640, pair ends 960. An explicit alternative ratio overrides the default.
+- **P02-02:** explicit triplets keep their exact timing under swing; both hands remain aligned and written ScoreSpec is unchanged.
+- **P02-03:** paired unmarked/slurred fixture produces measurably more connected note gates under the documented policy; same attack count/pitches/source IDs, no tie-merging or additional pedal commands. Include repeat pitches and voice isolation.
+- **P02-04:** slur ending/rest/explicit staccato/pedal interactions follow documented precedence; stop/seek/loop/replacement release all pending gates and pedal without hanging sound.
+- **P02-05:** stronger/shorter/monotonic dynamic behavior is exact under the versioned policy; compiling twice gives identical plans. Actual synth smoke and a paired listening review verify that audible expression is not only metadata.
+
+### P-03 — Reject conflicting colors on the same note
+
+Two pedagogical annotations must not impose different colors on the same note. Reject a conflicting final ScoreSpec, rather than choosing the last annotation or changing/removing a color silently. This applies during create, add/update annotation and whole-batch validation.
+
+Return an actionable `SCORE_VALIDATION_FAILED` with a stable detail reason `ANNOTATION_COLOR_CONFLICT` identifying the targeted note, conflicting annotation IDs and field paths within the authorized score. No write, revision increment, TTL refresh or partial mutation on rejection. Colors on disjoint notes remain free. Compare validated canonical color values, so equivalent accepted encodings are not false conflicts. Same-color overlap is not a conflicting-color error; other annotation constraints still apply.
+
+Required cases:
+- **P03-01:** annotation A colors n1 pink, B colors n1 blue -> validation failure with conflict detail; reversing annotation order yields the same rejection.
+- **P03-02:** pink on n1 and blue on n2 is valid; equivalent same-color overlap is valid within normal annotation count/text/reference limits.
+- **P03-03:** update/create through actual MCP returns actionable tool error; failed creation writes no draft, failed edit leaves old score/revision/TTL/annotations unchanged on independent re-read.
+- **P03-04:** a batch that explicitly removes/retargets the old annotation and adds the new one succeeds if its final state is conflict-free; no automatic content repair is introduced.
+- **P03-05:** UI receiving invalid conflicting data rejects it before renderer application and keeps the last usable score. Playback cursor highlighting remains separate from teaching colors and is not a second persistent annotation.
+
+### Remaining verification, not unanswered P-01/P-02/P-03
+
+Explicit human approval for permanent save is already required. A model-supplied `confirmed: true` is NOT evidence of a human action. #14/#18 must distinguish software tests of an explicit save command from host acceptance of the user's approval. Document target-host approval support; if a strict server-verifiable guarantee is required, choose trusted UI/host approval binding to owner + score + revision. Do not add a fake test claiming the backend can read the conversation.
+
+Initial musical/listening fixtures and target-host sessions still need actual review; these three policy answers do not constitute approval of unseen renderings or unheard audio.
 
 ### Technical contract gaps to close in #2/#3, without asking the owner to design TypeScript
 
@@ -137,13 +179,13 @@ Explicitly define shared bar alignment and per-bar meter changes, tempo beat uni
 
 Each issue carries its own unit/integration tests; #18 supplies the harness and cross-feature scenarios, not a testing phase postponed until the end. A code PR identifies test IDs and story IDs, includes positive/negative/boundary cases, and passes unit + API/MCP integration + DB isolation jobs relevant to it. Main is releasable only after the complete suite.
 
-Maintain an independently reviewed endpoint/tool inventory. A new registered tool or owned route without a mapped executable integration suite fails the contract-coverage check. Both listing coverage and assertions of effects matter. Test coverage reports are diagnostics, not proof of correctness. No disabled security/concurrency case or automatically accepted screenshot counts as passing.
+Maintain an independently reviewed endpoint/tool inventory. A new registered tool or owned route without a mapped executable integration suite fails the contract-coverage check. Both listing coverage and assertions of effects matter. Test coverage reports are diagnostics, not proof of correctness. No disabled security/concurrency case or automatically accepted screenshot counts as passing. P-01/P-02/P-03 are approved and their tests must not remain skipped as undecided.
 
 No production DB access, credentials, paid LLM calls, or delivered emails in default CI. Real auth validation uses signed test tokens and real signature verification; provider integration uses a dedicated test stack. Auth provider hosted screens/target-host iframe behavior require a small release smoke and are not guaranteed by HTTP tests alone.
 
-## 10. Verified implementation references
+## 10. Implementation references
 
-These are upstream references, not proof our unimplemented product works:
+These are upstream references retained from the test-plan baseline, not proof our unimplemented product works:
 
 - Vitest projects and separate runtimes: https://vitest.dev/guide/projects.html and https://vitest.dev/guide/environment.html
 - Nest application testing and Supertest: https://docs.nestjs.com/fundamentals/testing
