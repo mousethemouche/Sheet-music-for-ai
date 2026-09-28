@@ -113,28 +113,48 @@ These operations target stable domain IDs. They MUST NOT contain renderer coordi
 
 ## Representative TypeScript shape
 
+Exact shapes, targeting, spelling, no-op and error behavior are fixed in [SCORE_OPERATIONS_V1.md](SCORE_OPERATIONS_V1.md); the types below were refined accordingly. Value types (`KeySignature`, `ChordSymbol`, `Voice`, `Slur`, ...) are the ScoreSpec v1 types of ADR-001.
+
 ```ts
 type ScoreOperation =
   | { type: "set_tempo"; bpm: number }
   | { type: "set_time_signature"; numerator: number; denominator: number }
-  | SetKeySignatureOperation
-  | SetTonalContextOperation
-  | SetPlaybackFeelOperation
+  | { type: "set_key_signature"; keySignature: KeySignature | null }
+  | { type: "set_tonal_context"; tonalContext: TonalContext | null }
+  | { type: "set_playback_feel"; playbackFeel: PlaybackFeel | null }
   | { type: "set_title"; title: string | null }
   | { type: "set_tags"; tags: string[] }
-  | InsertMeasuresOperation
-  | ReplaceMeasuresOperation
-  | DeleteMeasuresOperation
-  | TransposeOperation
-  | SetChordSymbolOperation
-  | RemoveChordSymbolOperation
-  | SetHarmonicAnalysisOperation
-  | RemoveHarmonicAnalysisOperation
-  | SetFingeringOperation
-  | RemoveFingeringOperation
-  | AddAnnotationOperation
-  | UpdateAnnotationOperation
-  | RemoveAnnotationOperation
+  | { type: "insert_measures"; position: "before" | "after"; measureId: string; bars: BarContent[] }
+  | { type: "replace_measures"; measureIds: string[]; bars: BarContent[] }
+  | { type: "delete_measures"; measureIds: string[] }
+  | { type: "transpose"; semitones: number; target: { measureIds?: string[]; staffIds?: string[] } }
+  | { type: "set_chord_symbol"; harmonyId: string; measureId?: string; offset?: Fraction; chord: ChordSymbol }
+  | { type: "remove_chord_symbol"; harmonyId: string }
+  | { type: "set_harmonic_analysis"; harmonyId: string; measureId?: string; offset?: Fraction; analysis: HarmonicAnalysis }
+  | { type: "remove_harmonic_analysis"; harmonyId: string }
+  | { type: "set_fingering"; noteId: string; fingering: Fingering }
+  | { type: "remove_fingering"; noteId: string }
+  | { type: "set_articulations"; noteId: string; articulations: Articulation[] }
+  | { type: "add_slur"; slur: Slur }
+  | { type: "remove_slur"; slurId: string }
+  | { type: "set_dynamic"; dynamic: DynamicEvent }
+  | { type: "remove_dynamic"; dynamicId: string }
+  | { type: "set_pedal"; pedal: PedalEvent }
+  | { type: "remove_pedal"; pedalId: string }
+  | { type: "set_scale_degree"; scaleDegree: ScaleDegreeLabel }
+  | { type: "remove_scale_degree"; scaleDegreeId: string }
+  | { type: "add_annotation"; annotation: Annotation }
+  | { type: "update_annotation"; annotationId: string; color?: string; noteIds?: string[]; text?: string }
+  | { type: "remove_annotation"; annotationId: string }
+
+// One new bar for every staff at once (bar numbers are reassigned).
+type BarContent = {
+  id: string
+  kind?: "full" | "pickup" | "incomplete"
+  timeSignature?: TimeSignature
+  actualDuration?: Fraction
+  staves: Array<{ staffId: string; voices: Voice[] }>
+}
 ```
 
 Example:
