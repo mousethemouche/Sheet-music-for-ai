@@ -1,0 +1,51 @@
+{
+  "name": "sheet-music-for-ai",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP App in which an AI creates readable, playable piano scores inline in the conversation.",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=24.6.0",
+    "pnpm": ">=10.34.5 <11"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.json",
+    "lint": "eslint . --max-warnings=0 && prettier --check .",
+    "format": "prettier --write .",
+    "test": "vitest run --project unit --project component",
+    "test:integration": "vitest run --project integration",
+    "test:mcp-ui": "vitest run --project mcp-ui",
+    "check:arch": "depcruise apps packages --config .dependency-cruiser.cjs && vitest run --project architecture"
+  },
+  "devDependencies": {
+    "@eslint/js": "catalog:",
+    "@swc/core": "catalog:",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/jest-dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@types/supertest": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "@vitest/browser-playwright": "catalog:",
+    "dependency-cruiser": "catalog:",
+    "eslint": "catalog:",
+    "eslint-plugin-react-hooks": "catalog:",
+    "globals": "catalog:",
+    "jsdom": "catalog:",
+    "playwright": "catalog:",
+    "prettier": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "supertest": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

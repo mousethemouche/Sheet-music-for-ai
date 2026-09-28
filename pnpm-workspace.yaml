@@ -1,0 +1,86 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Single source of truth for third-party versions. Every workspace manifest
+# references these with "catalog:". Versions are exact pins; see
+# docs/architecture/REPO_LAYOUT.md ("Pinned versions") for the compatibility
+# constraints behind the non-latest choices.
+catalog:
+  # Language and tooling
+  typescript: 6.0.3
+  '@types/node': 24.19.0
+  tsx: 4.23.15
+  eslint: 10.11.0
+  '@eslint/js': 10.0.1
+  typescript-eslint: 8.71.0
+  eslint-plugin-react-hooks: 7.1.1
+  globals: 17.12.0
+  prettier: 3.9.9
+  dependency-cruiser: 18.4.0
+
+  # Build
+  vite: 8.3.1
+  '@vitejs/plugin-react': 6.1.1
+  vite-plugin-singlefile: 2.3.3
+  unplugin-swc: 2.0.0
+  '@swc/core': 1.16.2
+
+  # Tests
+  vitest: 5.0.2
+  '@vitest/browser-playwright': 5.0.2
+  playwright: 1.63.0
+  jsdom: 29.1.1
+  '@testing-library/react': 16.3.3
+  '@testing-library/dom': 10.4.2
+  '@testing-library/user-event': 14.6.7
+  '@testing-library/jest-dom': 7.0.1
+  supertest: 7.3.0
+  '@types/supertest': 7.2.1
+
+  # Runtime: shared
+  zod: 4.6.5
+
+  # Runtime: React (web, MCP View, score-ui)
+  react: 19.3.0
+  react-dom: 19.3.0
+  '@types/react': 19.3.0
+  '@types/react-dom': 19.3.0
+  react-router: 8.4.0
+  '@supabase/supabase-js': 2.117.2
+
+  # Runtime: rendering and playback adapters
+  vexflow: 5.0.0
+  spessasynth_lib: 4.3.14
+  spessasynth_core: 4.3.22
+
+  # Runtime: MCP
+  '@modelcontextprotocol/sdk': 1.30.1
+  '@modelcontextprotocol/ext-apps': 1.7.5
+
+  # Runtime: HTTP / NestJS
+  '@nestjs/common': 12.1.1
+  '@nestjs/core': 12.1.1
+  '@nestjs/platform-express': 12.1.1
+  '@nestjs/testing': 12.1.1
+  reflect-metadata: 0.2.2
+  rxjs: 7.8.2
+  express: 5.2.1
+  '@types/express': 5.0.6
+
+  # Runtime: auth and persistence adapters
+  jose: 6.2.12
+  pg: 8.23.0
+  '@types/pg': 8.23.1
+
+# pnpm 10 does not run dependency lifecycle scripts unless allowed. Both packages
+# ship their native binaries through optionalDependencies, so their postinstall
+# checks are not needed.
+ignoredBuiltDependencies:
+  - '@swc/core'
+  - esbuild
+
+# The runtime is Node 24: keep one @types/node version even when @types/*
+# packages ask for "*" (otherwise Vite resolves twice with different peers).
+overrides:
+  '@types/node': 'catalog:'

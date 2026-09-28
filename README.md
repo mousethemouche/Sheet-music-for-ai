@@ -1,46 +1,121 @@
 # Sheet Music for AI
 
-An AI-first music product that turns musical conversations into **readable, playable piano scores directly inside the conversation**.
+An MCP App in which an AI creates readable, playable piano scores inline in the
+conversation, refines them on request, and saves them to a personal library
+only after the user confirms.
 
-## Product principle
+Status: MVP v1 implementation has started. The monorepo, tooling and CI are in
+place. Product features land issue by issue (see
+[DELIVERY_PLAN](docs/architecture/DELIVERY_PLAN.md)).
 
-> **The conversation is the interface. The score is an AI-generated artifact.**
+## Requirements
 
-The user asks the AI to explain, demonstrate, transform, or create a musical idea. The AI returns a playable score, can annotate it visually, and can keep evolving the same artifact through natural-language requests.
+- Node 24 (`.nvmrc`; `>=24.6`)
+- pnpm 10 (pinned in `packageManager`)
+- PostgreSQL 15 for integration tests (databases named `sheet_music_*` only)
+- Chromium for the MCP-UI suite: `pnpm exec playwright install chromium`
 
-This is deliberately **not** an online notation editor.
+```sh
+pnpm install --frozen-lockfile
+```
 
-## MVP product loop
+## Structure
 
-1. Ask the AI for a musical example, explanation, exercise, or transformation.
-2. Receive an inline piano score.
-3. Play/pause it, change tempo, and loop it.
-4. Use simple color-linked annotations to explain specific notes.
-5. Refine the same score through conversation.
-6. Save it only after explicit user confirmation.
-7. Retrieve saved scores through a minimal library with free-form tags/search.
+```text
+apps/
+  web/        React + Vite SPA: standalone player, auth, saved library
+  api/        NestJS HTTP app (saved-score routes, health, version)
+  mcp/        MCP server (stateless Streamable HTTP, POST /mcp)
+    view/     MCP Apps View: React, built into ONE self-contained HTML file
+packages/
+  music-domain/          ScoreSpec, invariants, pure music logic
+  music-contracts/       transport-neutral schemas and DTOs
+  music-application/     use cases and neutral ports
+  renderer-core/         renderer port, LayoutMap
+  renderer-vexflow/      VexFlow adapter
+  playback-core/         PlaybackPlan, timeline compiler, engine port
+  playback-spessasynth/  SpessaSynth adapter
+  score-ui/              React ScorePlayer over the ports
+  test-fixtures/         F01-F12 ScoreSpec fixtures
+  persistence-postgres/  pg repositories
+  auth-jwt/              Supabase JWT/JWKS verification to UserId
+  server-common/         shared error mapping, logging, request protection
+supabase/migrations/     SQL migrations for Supabase cloud
+tools/                   Vitest setup and architecture-rule proof test
+```
 
-## MVP boundaries
+Packages export TypeScript source and have no build step; Vite, Vitest and
+`tsc` consume them directly, and the Node apps are bundled by Vite. Details,
+version constraints and the reasoning behind them:
+[REPO_LAYOUT](docs/architecture/REPO_LAYOUT.md).
 
-- Piano only.
-- One or two staves depending on the material.
-- Short excerpts by default: ~8 measures; 32 measures maximum per section.
-- Simple pedagogical annotations: colored notes + same-color text above the staff.
-- Target maximum of 4 visible annotations per excerpt.
-- No mouse-driven score editor.
-- No audio/MIDI transcription or performance grading.
-- No social network, teacher marketplace, or practice analytics in v1.
+## Commands
 
-## Product specifications
+| Command                 | Purpose                                                           |
+| ----------------------- | ----------------------------------------------------------------- |
+| `pnpm build`            | Build web, api and mcp (View bundle, then server)                 |
+| `pnpm typecheck`        | Strict `tsc` in every package and app                             |
+| `pnpm lint`             | ESLint (type-aware, zero warnings) and Prettier check             |
+| `pnpm format`           | Format with Prettier                                              |
+| `pnpm test`             | Unit + component tests. Starts no database and no browser         |
+| `pnpm test:integration` | DB/API/MCP integration tests, serial, against `TEST_DATABASE_URL` |
+| `pnpm test:mcp-ui`      | MCP-UI integration in headless Chromium                           |
+| `pnpm check:arch`       | Dependency rules (dependency-cruiser) and their proof test        |
 
-The agreed MVP product scope lives in `docs/product/` on the `spec/mvp-v1` branch:
+One app at a time: `pnpm --filter @sheet-music/<web|api|mcp> build`, then
+`pnpm --filter @sheet-music/api start` (port 3000) or
+`pnpm --filter @sheet-music/mcp start` (port 3001, `/mcp`). `PORT` overrides
+the default. Web dev server: `pnpm --filter @sheet-music/web dev`.
 
-- [`docs/product/PRD.md`](docs/product/PRD.md) — vision, user, JTBD, product rules, scope, non-goals, Definition of Done, validation goals.
-- [`docs/product/STORY_MAP.md`](docs/product/STORY_MAP.md) — end-to-end journey and MVP release slice.
-- [`docs/product/USER_STORIES.md`](docs/product/USER_STORIES.md) — prioritized user stories and acceptance criteria.
+## Tests
 
-## Status
+Unit, component and integration (with its MCP-UI sub-suite) from the
+[TEST_PLAN](docs/testing/TEST_PLAN.md), selected by file name so each file runs
+in exactly one Vitest project:
 
-**Product discovery for MVP v1 is sufficiently defined to begin technical discovery.**
+| File name         | Project       | Runs in                                                               |
+| ----------------- | ------------- | --------------------------------------------------------------------- |
+| `*.test.ts`       | `unit`        | Node                                                                  |
+| `*.test.tsx`      | `component`   | jsdom + Testing Library (React packages only)                         |
+| `*.int.test.ts`   | `integration` | Node, real Postgres/HTTP/MCP, one worker                              |
+| `*.mcpui.test.ts` | `mcp-ui`      | Chromium, one worker ([process](docs/testing/MCP_UI_TEST_PROCESS.md)) |
 
-Technical choices are intentionally not frozen yet. The next phase will decide the MCP contract, score representation, rendering/playback approach, persistence, React/NestJS structure, and Vercel deployment architecture from the product requirements above.
+`TEST_DATABASE_URL` defaults to
+`postgres://user@localhost:5432/sheet_music_test`. Tests import the real module
+under test; integration tests close their apps, servers and pools in
+`afterAll`.
+
+## Dependency rules
+
+Dependencies point inward (ADR-003/004/005), checked by `pnpm check:arch`
+including type-only imports, re-exports and aliases:
+
+- `music-domain`, `music-application` and `music-contracts` never import React,
+  NestJS, MCP SDK, `pg`, Supabase, VexFlow, SpessaSynth, Express or `jose`.
+- `renderer-core` has no VexFlow, `playback-core` has no SpessaSynth, `score-ui`
+  uses the ports only; VexFlow and SpessaSynth live only in their adapters.
+- Inward packages never import adapters and import only the workspace packages
+  the ADR-003 diagram allows (no sideways edge such as `renderer-core` ->
+  `music-application`); packages never import apps; apps never import each
+  other; React only in `score-ui`, `apps/web` and `apps/mcp/view`; MCP SDK only
+  in `apps/mcp`; Supabase client only in `apps/web`; browser code never imports
+  server infrastructure.
+- No import cycles; production code never imports devDependencies or the
+  test fixtures.
+
+## Specifications
+
+- Product: [PRD](docs/product/PRD.md), [STORY_MAP](docs/product/STORY_MAP.md),
+  [USER_STORIES](docs/product/USER_STORIES.md)
+- Architecture: [ADR-001 ScoreSpec](docs/architecture/ADR-001-score-spec-contract.md),
+  [ADR-002 ScoreOperations](docs/architecture/ADR-002-score-operations.md),
+  [ADR-003 monorepo/MCP](docs/architecture/ADR-003-monorepo-mcp-boundaries.md),
+  [ADR-004 rendering/playback](docs/architecture/ADR-004-rendering-playback-boundaries.md),
+  [ADR-005 auth](docs/architecture/ADR-005-multi-user-auth.md),
+  [ADR-006 drafts](docs/architecture/ADR-006-draft-score-lifecycle.md);
+  contracts: [ScoreSpec v1 semantics](docs/architecture/SCORESPEC_V1_SEMANTICS.md),
+  [ScoreOperations v1](docs/architecture/SCORE_OPERATIONS_V1.md),
+  [application layer](docs/architecture/APPLICATION_LAYER.md)
+- Testing: [TEST_PLAN](docs/testing/TEST_PLAN.md),
+  [MCP-UI process](docs/testing/MCP_UI_TEST_PROCESS.md)
+- Database: [supabase/README](supabase/README.md)

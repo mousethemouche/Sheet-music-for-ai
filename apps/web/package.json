@@ -1,0 +1,33 @@
+{
+  "name": "@sheet-music/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@sheet-music/music-contracts": "workspace:*",
+    "@sheet-music/music-domain": "workspace:*",
+    "@sheet-music/playback-core": "workspace:*",
+    "@sheet-music/playback-spessasynth": "workspace:*",
+    "@sheet-music/renderer-core": "workspace:*",
+    "@sheet-music/renderer-vexflow": "workspace:*",
+    "@sheet-music/score-ui": "workspace:*",
+    "@supabase/supabase-js": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router": "catalog:"
+  },
+  "devDependencies": {
+    "@sheet-music/test-fixtures": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "vite": "catalog:"
+  }
+}

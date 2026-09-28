@@ -1,0 +1,21 @@
+{
+  "name": "@sheet-music/playback-spessasynth",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@sheet-music/music-domain": "workspace:*",
+    "@sheet-music/playback-core": "workspace:*",
+    "spessasynth_core": "catalog:",
+    "spessasynth_lib": "catalog:"
+  },
+  "devDependencies": {
+    "@sheet-music/test-fixtures": "workspace:*"
+  }
+}

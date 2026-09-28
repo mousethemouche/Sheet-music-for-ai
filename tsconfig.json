@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["*.ts", "tools/**/*.ts", "apps/*/vite*.config.ts"],
+  "exclude": ["tools/architecture/fixtures/**"]
+}

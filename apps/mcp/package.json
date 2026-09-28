@@ -1,0 +1,44 @@
+{
+  "name": "@sheet-music/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm run build:view && pnpm run build:server",
+    "build:view": "vite build --config vite.view.config.ts",
+    "build:server": "vite build",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/server/main.js",
+    "typecheck": "tsc -p tsconfig.json && tsc -p view/tsconfig.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "catalog:",
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@sheet-music/auth-jwt": "workspace:*",
+    "@sheet-music/music-application": "workspace:*",
+    "@sheet-music/music-contracts": "workspace:*",
+    "@sheet-music/music-domain": "workspace:*",
+    "@sheet-music/persistence-postgres": "workspace:*",
+    "@sheet-music/playback-core": "workspace:*",
+    "@sheet-music/playback-spessasynth": "workspace:*",
+    "@sheet-music/renderer-core": "workspace:*",
+    "@sheet-music/renderer-vexflow": "workspace:*",
+    "@sheet-music/score-ui": "workspace:*",
+    "@sheet-music/server-common": "workspace:*",
+    "express": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@sheet-music/test-fixtures": "workspace:*",
+    "@types/express": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "tsx": "catalog:",
+    "vite": "catalog:",
+    "vite-plugin-singlefile": "catalog:"
+  }
+}
