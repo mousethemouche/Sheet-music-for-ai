@@ -57,9 +57,16 @@ VexFlow adapter  Playback compiler
 - notes, rests and chords;
 - written pitch and rhythmic duration;
 - tempo and time signature;
+- key signature / tonal context;
 - staff/hand/clef information;
+- tuplets and pickup/incomplete measures;
+- swing feel;
+- articulations and phrasing slurs;
+- dynamics and crescendo/diminuendo;
+- sustain-pedal spans;
 - chord symbols;
 - harmonic analysis / Roman numerals;
+- melodic scale-degree labels;
 - piano fingering;
 - pedagogical annotations;
 - stable IDs required by AI editing and UI synchronization.
@@ -98,8 +105,16 @@ export type ScoreSpec = {
 
   tempo: Tempo
   timeSignature: TimeSignature
+  keySignature?: KeySignature
+  tonalContext?: TonalContext
+  playbackFeel?: PlaybackFeel
+
   staves: Staff[]
   harmony?: HarmonyEvent[]
+  slurs?: Slur[]
+  dynamics?: DynamicEvent[]
+  pedal?: PedalEvent[]
+  scaleDegrees?: ScaleDegreeLabel[]
   annotations: Annotation[]
 }
 
@@ -112,6 +127,33 @@ export type TimeSignature = {
   denominator: number
 }
 
+export type KeySignature = {
+  fifths: -7 | -6 | -5 | -4 | -3 | -2 | -1 | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
+}
+
+export type TonalContext = {
+  tonic: PitchClass
+  mode:
+    | "major"
+    | "minor"
+    | "ionian"
+    | "dorian"
+    | "phrygian"
+    | "lydian"
+    | "mixolydian"
+    | "aeolian"
+    | "locrian"
+}
+
+export type PlaybackFeel =
+  | { type: "straight" }
+  | {
+      type: "swing"
+      subdivision: "eighth" | "sixteenth"
+      ratio?: { long: number; short: number }
+      displayText?: string
+    }
+
 export type Staff = {
   id: string
   hand: "right" | "left"
@@ -122,6 +164,7 @@ export type Staff = {
 export type Measure = {
   id: string
   number: number
+  kind?: "full" | "pickup" | "incomplete"
   voices: Voice[]
 }
 
@@ -161,6 +204,10 @@ export type Duration = {
     | "sixteenth"
     | "thirtySecond"
   dots?: 0 | 1 | 2
+  tuplet?: {
+    actual: number
+    normal: number
+  }
 }
 ```
 
@@ -179,6 +226,7 @@ export type NoteEvent = {
   pitch: Pitch
   duration: Duration
   fingering?: Fingering
+  articulations?: Articulation[]
   tie?: {
     start?: boolean
     end?: boolean
@@ -193,6 +241,7 @@ export type ChordEvent = {
     id: string
     pitch: Pitch
     fingering?: Fingering
+    articulations?: Articulation[]
   }>
 }
 
@@ -204,6 +253,131 @@ export type RestEvent = {
 ```
 
 Individual notes inside a chord MUST have stable IDs so the product can target a single note for coloring, annotation, playback highlighting, or later editing.
+
+## Extended notation required in ScoreSpec v1
+
+These capabilities are part of MVP v1 because they are common in piano/jazz teaching material and must be representable by the AI without falling back to renderer-specific hacks.
+
+### Articulations
+
+```ts
+export type Articulation =
+  | "accent"
+  | "staccato"
+  | "tenuto"
+  | "marcato"
+```
+
+Articulations are attached to note/chord content as musical semantics. Rendering and playback adapters decide how to display and interpret them.
+
+### Tuplets
+
+Tuplets are represented on rhythmic duration through an `actual:normal` ratio.
+
+Examples:
+
+- triplet = `{ actual: 3, normal: 2 }`;
+- quintuplet = `{ actual: 5, normal: 4 }`.
+
+Nested/arbitrarily complex tuplet notation is not required for v1, but ordinary jazz/classical tuplets are.
+
+### Pickup and incomplete measures
+
+`Measure.kind` explicitly permits:
+
+- `full`;
+- `pickup`;
+- `incomplete`.
+
+Domain validation allows under-filled duration only when the measure is explicitly marked accordingly.
+
+### Swing feel
+
+Swing is first-class performance metadata rather than a renderer hack.
+
+```ts
+export type PlaybackFeel =
+  | { type: "straight" }
+  | {
+      type: "swing"
+      subdivision: "eighth" | "sixteenth"
+      ratio?: { long: number; short: number }
+      displayText?: string
+    }
+```
+
+The playback compiler applies the timing feel. The renderer may display a conventional "Swing" indication when requested.
+
+### Phrasing slurs
+
+Phrasing/slur semantics are distinct from ties.
+
+```ts
+export type Slur = {
+  id: string
+  startNoteId: string
+  endNoteId: string
+}
+```
+
+A tie means sustained pitch continuity; a slur represents phrasing/articulation across notes.
+
+### Dynamics
+
+```ts
+export type DynamicMark =
+  | "ppp" | "pp" | "p" | "mp"
+  | "mf" | "f" | "ff" | "fff"
+
+export type DynamicEvent =
+  | {
+      id: string
+      type: "mark"
+      eventId: string
+      marking: DynamicMark
+    }
+  | {
+      id: string
+      type: "hairpin"
+      direction: "crescendo" | "diminuendo"
+      startEventId: string
+      endEventId: string
+    }
+```
+
+Dynamics are rendered notation and may influence playback velocity/expression through the neutral playback compiler.
+
+### Piano sustain pedal
+
+```ts
+export type PedalEvent = {
+  id: string
+  type: "sustain"
+  startEventId: string
+  endEventId: string
+}
+```
+
+The domain expresses the musical pedal span. VexFlow handles visual notation; the playback adapter handles sustain behavior.
+
+### Melodic scale-degree labels
+
+Roman numerals describe harmonic function. Melodic scale degrees are a separate pedagogical concept.
+
+```ts
+export type ScaleDegreeLabel = {
+  id: string
+  noteId: string
+  degree: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  alter?: -2 | -1 | 0 | 1 | 2
+  display?: string
+}
+```
+
+Examples include `1`, `b3`, `#4`, `5`, `b7`.
+
+These labels remain structured so the AI can reason about them and the renderer can choose a consistent visual position.
+
 
 ## Chord symbols and harmonic analysis
 
@@ -322,6 +496,13 @@ At minimum, validation MUST enforce:
 12. IDs must be unique within the score.
 13. Floating-point seconds are not accepted as canonical rhythmic duration.
 14. Renderer coordinates and library-specific objects are forbidden in the canonical contract.
+15. Key signatures are limited to conventional -7..+7 fifths.
+16. Tuplet ratios must be positive integers and rhythm validation must account for the ratio.
+17. Under-filled measures are valid only when explicitly marked pickup/incomplete.
+18. Swing ratio values must be positive and playback semantics must remain deterministic.
+19. Slur/tie/dynamic/pedal/scale-degree references must resolve to existing stable IDs.
+20. Scale degrees are 1..7 with validated alterations.
+21. Pedal and hairpin spans must have an ordered valid start/end target.
 
 ## Renderer contract
 
@@ -439,12 +620,9 @@ These costs are accepted because the MVP deliberately supports a narrow piano-le
 
 Unless required by a validated product use case, v1 does not attempt to model the full notation standard, including exhaustive support for:
 
-- ornaments;
-- complex articulations;
-- pedal markings;
-- advanced dynamics;
+- exhaustive ornaments;
 - grace-note systems;
-- arbitrary tuplets;
+- nested/exotic tuplet systems beyond ordinary v1 ratios;
 - lyrics;
 - multiple instruments;
 - orchestral layout;
@@ -471,6 +649,10 @@ Renderer or playback-library changes alone MUST NOT require a ScoreSpec version 
 - [ ] Runtime validation exists for all MVP invariants.
 - [ ] Fixtures cover one-staff and two-staff piano scores.
 - [ ] Fixtures cover chord symbols, Roman numerals, fingering and pedagogical annotations.
+- [ ] Fixtures cover key signatures/tonality, tuplets, pickup measures and swing feel.
+- [ ] Fixtures cover accent/staccato/tenuto/marcato and phrasing slurs.
+- [ ] Fixtures cover dynamic marks, crescendo/diminuendo and sustain pedal.
+- [ ] Fixtures cover melodic scale-degree labels.
 - [ ] Stable note IDs survive non-destructive edits.
 - [ ] A VexFlow adapter can render a valid ScoreSpec without leaking VexFlow types upstream.
 - [ ] A playback compiler can derive playback events/MIDI from the same ScoreSpec without leaking SpessaSynth types upstream.
