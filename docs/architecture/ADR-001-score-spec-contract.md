@@ -92,6 +92,8 @@ Those concerns belong to adapters.
 
 The TypeScript examples below define the intended contract. Runtime validation will be implemented with Zod or an equivalent schema validator.
 
+Precise semantics (units, bar alignment, local meters, pickups, tuplet groups, ties, spans, colors, limits, errors) are fixed in [SCORESPEC_V1_SEMANTICS.md](SCORESPEC_V1_SEMANTICS.md); the types below were refined accordingly.
+
 ```ts
 export type ScoreSpec = {
   version: 1
@@ -119,7 +121,13 @@ export type ScoreSpec = {
 }
 
 export type Tempo = {
-  bpm: number
+  bpm: number // quarter notes per minute, whatever the meter; 20..400
+}
+
+// Exact musical time in WHOLE notes (1/4 = one quarter note); never floats.
+export type Fraction = {
+  numerator: number
+  denominator: number
 }
 
 export type TimeSignature = {
@@ -149,22 +157,24 @@ export type PlaybackFeel =
   | { type: "straight" }
   | {
       type: "swing"
-      subdivision: "eighth" | "sixteenth"
-      ratio?: { long: number; short: number }
+      subdivision?: "eighth" | "sixteenth" // default eighth (P-02)
+      ratio?: { long: number; short: number } // integers, long >= short; default 2:1 (P-02)
       displayText?: string
     }
 
 export type Staff = {
   id: string
   hand: "right" | "left"
-  clef: "treble" | "bass"
-  measures: Measure[]
+  clef?: "treble" | "bass" // default from hand: right treble, left bass
+  measures: Measure[] // same bars (ids, kinds, meters) on every staff
 }
 
 export type Measure = {
-  id: string
-  number: number
+  id: string // bar ID, shared by the aligned measure of every staff
+  number: number // 1-based bar position, pickup included
   kind?: "full" | "pickup" | "incomplete"
+  timeSignature?: TimeSignature // local meter for this bar only
+  actualDuration?: Fraction // required for pickup/incomplete bars
   voices: Voice[]
 }
 
@@ -205,6 +215,7 @@ export type Duration = {
     | "thirtySecond"
   dots?: 0 | 1 | 2
   tuplet?: {
+    groupId: string // shared by the consecutive members of one group
     actual: number
     normal: number
   }
@@ -227,10 +238,13 @@ export type NoteEvent = {
   duration: Duration
   fingering?: Fingering
   articulations?: Articulation[]
-  tie?: {
-    start?: boolean
-    end?: boolean
-  }
+  tie?: Tie
+}
+
+// Pairs with the same written pitch in the next event of the same voice.
+export type Tie = {
+  start?: boolean
+  end?: boolean
 }
 
 export type ChordEvent = {
@@ -242,6 +256,7 @@ export type ChordEvent = {
     pitch: Pitch
     fingering?: Fingering
     articulations?: Articulation[]
+    tie?: Tie // chord members are tied individually
   }>
 }
 
@@ -300,8 +315,8 @@ export type PlaybackFeel =
   | { type: "straight" }
   | {
       type: "swing"
-      subdivision: "eighth" | "sixteenth"
-      ratio?: { long: number; short: number }
+      subdivision?: "eighth" | "sixteenth" // default eighth (P-02)
+      ratio?: { long: number; short: number } // integers, long >= short; default 2:1 (P-02)
       displayText?: string
     }
 ```
@@ -412,7 +427,7 @@ export type HarmonicAnalysis = {
 export type HarmonyEvent = {
   id: string
   measureId: string
-  beat?: number
+  offset?: Fraction // position in the bar, whole notes; default 0 (replaces `beat`)
   chord?: ChordSymbol
   analysis?: HarmonicAnalysis
 }
@@ -436,7 +451,7 @@ Annotations intentionally remain minimal in v1.
 ```ts
 export type Annotation = {
   id: string
-  color: string
+  color: string // "#rgb", "#rrggbb" or CSS name; stored as lowercase "#rrggbb"
   noteIds: string[]
   text: string
 }
