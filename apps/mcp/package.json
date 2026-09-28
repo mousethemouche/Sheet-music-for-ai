@@ -7,7 +7,7 @@
     "build": "pnpm run build:view && pnpm run build:server",
     "build:view": "vite build --config vite.view.config.ts",
     "build:server": "vite build",
-    "dev": "tsx watch src/main.ts",
+    "dev": "pnpm run build:view && MCP_VIEW_HTML_PATH=dist/view/index.html tsx watch src/main.ts",
     "start": "node dist/server/main.js",
     "typecheck": "tsc -p tsconfig.json && tsc -p view/tsconfig.json"
   },

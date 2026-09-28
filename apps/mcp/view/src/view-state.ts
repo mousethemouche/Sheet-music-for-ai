@@ -1,0 +1,109 @@
+/**
+ * State of the View shell: the last valid score artifact and a recoverable
+ * notice. Pure reducer plus a tiny external store, so bridge events can be
+ * recorded before React subscribes.
+ *
+ * Acceptance rules for a parsed score artifact:
+ * - the first valid artifact is shown, and the View stays bound to its score ID;
+ * - the same ID at a higher revision replaces it (the player applies P-01);
+ * - the same or a lower revision of that ID (duplicate or stale) is ignored;
+ * - another score ID is ignored (one View shows one score).
+ * A tool error, an unreadable result or a cancellation keeps the last valid
+ * artifact and only sets a notice.
+ */
+import type { ScoreArtifact } from '@sheet-music/music-contracts';
+import { parseToolResult } from './tool-result';
+
+export type ViewNotice =
+  | { readonly kind: 'rejected'; readonly code: string; readonly message: string }
+  | { readonly kind: 'unreadable' }
+  | { readonly kind: 'cancelled' };
+
+export interface ViewState {
+  readonly connection: 'connecting' | 'connected' | 'failed' | 'closed';
+  readonly artifact: ScoreArtifact | null;
+  readonly notice: ViewNotice | null;
+}
+
+export type ViewEvent =
+  | { readonly type: 'connected' }
+  | { readonly type: 'connection-failed' }
+  | { readonly type: 'tool-result'; readonly result: unknown }
+  | { readonly type: 'tool-cancelled' }
+  | { readonly type: 'teardown' };
+
+export const INITIAL_VIEW_STATE: ViewState = {
+  connection: 'connecting',
+  artifact: null,
+  notice: null,
+};
+
+const UNREADABLE_ERROR = {
+  code: 'UNKNOWN',
+  message: 'The request failed and the host sent no readable error.',
+};
+
+function acceptsArtifact(current: ScoreArtifact | null, next: ScoreArtifact): boolean {
+  return current === null || (next.scoreId === current.scoreId && next.revision > current.revision);
+}
+
+function onToolResult(state: ViewState, result: unknown): ViewState {
+  const parsed = parseToolResult(result);
+  switch (parsed.kind) {
+    case 'artifact':
+      return acceptsArtifact(state.artifact, parsed.artifact)
+        ? { ...state, artifact: parsed.artifact, notice: null }
+        : state;
+    case 'tool-error': {
+      const { code, message } = parsed.error ?? UNREADABLE_ERROR;
+      return { ...state, notice: { kind: 'rejected', code, message } };
+    }
+    case 'invalid':
+      return { ...state, notice: { kind: 'unreadable' } };
+  }
+}
+
+export function reduceViewState(state: ViewState, event: ViewEvent): ViewState {
+  switch (event.type) {
+    case 'connected':
+      return { ...state, connection: 'connected' };
+    case 'connection-failed':
+      return { ...state, connection: 'failed' };
+    case 'tool-result':
+      return onToolResult(state, event.result);
+    case 'tool-cancelled':
+      return { ...state, notice: { kind: 'cancelled' } };
+    case 'teardown':
+      return { connection: 'closed', artifact: null, notice: null };
+  }
+}
+
+/** Function properties (not methods): React calls getState/subscribe detached. */
+export interface ViewStore {
+  readonly getState: () => ViewState;
+  readonly dispatch: (event: ViewEvent) => void;
+  readonly subscribe: (listener: () => void) => () => void;
+}
+
+export function createViewStore(initial: ViewState = INITIAL_VIEW_STATE): ViewStore {
+  let state = initial;
+  const listeners = new Set<() => void>();
+  return {
+    getState: () => state,
+    dispatch: (event) => {
+      const next = reduceViewState(state, event);
+      if (next !== state) {
+        state = next;
+        for (const listener of [...listeners]) {
+          listener();
+        }
+      }
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+}
