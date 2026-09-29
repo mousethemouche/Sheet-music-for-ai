@@ -19,6 +19,7 @@
     "@sheet-music/persistence-postgres": "workspace:*",
     "@sheet-music/server-common": "workspace:*",
     "express": "catalog:",
+    "pg": "catalog:",
     "reflect-metadata": "catalog:",
     "rxjs": "catalog:"
   },
