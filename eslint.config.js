@@ -4,9 +4,10 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
-// Code with React: shared player UI, standalone web app and the MCP Apps View.
+// Code with React: shared player UI, design system, standalone web app and the MCP Apps View.
 const REACT_SOURCES = [
   'packages/score-ui/**/*.{ts,tsx}',
+  'packages/ui/**/*.{ts,tsx}',
   'apps/web/src/**/*.{ts,tsx}',
   'apps/mcp/view/**/*.{ts,tsx}',
 ];

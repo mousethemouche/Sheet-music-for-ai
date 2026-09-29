@@ -30,8 +30,18 @@ const ANY_WORKSPACE = '^(apps|packages)/|^@sheet-music/';
 /** Tests (package-level `test/` directories, `*.test.ts(x)` of every category) and app build configs. */
 const NOT_PRODUCTION = '(^|/)test/|\\.test\\.tsx?$|^apps/[^/]+/vite[^/]*\\.config\\.ts$';
 
-// Testing Library's React renderer is React too.
-const REACT = ['react', 'react-dom', 'react-router', 'react-router-dom', '@testing-library/react'];
+// The unified `radix-ui` package and the individual `@radix-ui/*` primitives.
+const RADIX = ['radix-ui', '@radix-ui/[^/]+'];
+
+// Testing Library's React renderer is React too, and so are the Radix primitives.
+const REACT = [
+  'react',
+  'react-dom',
+  'react-router',
+  'react-router-dom',
+  '@testing-library/react',
+  ...RADIX,
+];
 const NEST = ['@nestjs/[^/]+'];
 const MCP_SDK = ['@modelcontextprotocol/[^/]+'];
 const POSTGRES = ['pg', 'pg-[^/]+'];
@@ -63,7 +73,7 @@ const ADAPTERS = [
   'server-common',
 ];
 
-/** Packages that point inward (domain, application, ports, shared UI, fixtures). */
+/** Packages that point inward (domain, application, ports, shared UI, design system, fixtures). */
 const INWARD = [
   'music-domain',
   'music-contracts',
@@ -71,6 +81,7 @@ const INWARD = [
   'renderer-core',
   'playback-core',
   'score-ui',
+  'ui',
   'test-fixtures',
 ];
 
@@ -85,7 +96,9 @@ const ALLOWED_WORKSPACE_DEPENDENCIES = {
   'music-application': ['music-domain', 'music-contracts'],
   'renderer-core': ['music-domain'],
   'playback-core': ['music-domain'],
-  'score-ui': ['music-domain', 'renderer-core', 'playback-core'],
+  'score-ui': ['music-domain', 'renderer-core', 'playback-core', 'ui'],
+  // The design system depends on no other workspace package.
+  ui: [],
 };
 
 /** @type {import('dependency-cruiser').IConfiguration} */
@@ -200,10 +213,18 @@ module.exports = {
     {
       name: 'react-only-in-ui-code',
       comment:
-        'ADR-003/004: React lives in score-ui, the web app and the MCP View only (component tests run there).',
+        'ADR-003/004: React lives in score-ui, the design system (ui), the web app and the MCP View only (component tests run there).',
       severity: 'error',
-      from: { pathNot: '^(packages/score-ui/|apps/web/|apps/mcp/view/)' },
+      from: { pathNot: '^(packages/score-ui/|packages/ui/|apps/web/|apps/mcp/view/)' },
       to: { path: npm(...REACT) },
+    },
+    {
+      name: 'radix-only-in-ui-package',
+      comment:
+        'Radix primitives stay behind the design system: apps and score-ui use @sheet-music/ui.',
+      severity: 'error',
+      from: { pathNot: inPackages('ui') },
+      to: { path: npm(...RADIX) },
     },
     {
       name: 'supabase-client-only-in-web',
@@ -237,9 +258,9 @@ module.exports = {
     {
       name: 'browser-code-no-server-infrastructure',
       comment:
-        'ADR-005: browser bundles (web, MCP View, score-ui) never contain server infrastructure or server-only secrets.',
+        'ADR-005: browser bundles (web, MCP View, score-ui, ui) never contain server infrastructure or server-only secrets.',
       severity: 'error',
-      from: { path: '^(apps/web/src/|apps/mcp/view/|packages/score-ui/)' },
+      from: { path: '^(apps/web/src/|apps/mcp/view/|packages/score-ui/|packages/ui/)' },
       to: {
         path: [
           workspace('persistence-postgres', 'auth-jwt', 'server-common'),

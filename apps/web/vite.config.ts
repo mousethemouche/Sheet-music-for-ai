@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { type Plugin, defineConfig } from 'vite';
 import { PIANO_ASSET_PATH } from './src/player/assetPaths';
@@ -72,5 +73,6 @@ function pianoSoundFont(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), pianoSoundFont()],
+  // Tailwind CSS v4 compiles src/styles/app.css (design system: packages/ui).
+  plugins: [react(), tailwindcss(), pianoSoundFont()],
 });

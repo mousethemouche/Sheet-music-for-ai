@@ -36,6 +36,7 @@ packages/
   playback-core/         PlaybackPlan, timeline compiler, engine port
   playback-spessasynth/  SpessaSynth adapter
   score-ui/              React ScorePlayer over the ports
+  ui/                    design system: shadcn/ui (Radix) components, Tailwind theme
   test-fixtures/         F01-F12 ScoreSpec fixtures
   persistence-postgres/  pg repositories
   auth-jwt/              Supabase JWT/JWKS verification to UserId
@@ -45,7 +46,9 @@ tools/                   Vitest setup and architecture-rule proof test
 ```
 
 Packages export TypeScript source and have no build step; Vite, Vitest and
-`tsc` consume them directly, and the Node apps are bundled by Vite. Details,
+`tsc` consume them directly, and the Node apps are bundled by Vite. The web
+app and the View are styled with Tailwind CSS v4 and the `packages/ui`
+components, so they need Safari 16.4+, Chrome 111+ or Firefox 128+. Details,
 version constraints and the reasoning behind them:
 [REPO_LAYOUT](docs/architecture/REPO_LAYOUT.md).
 
@@ -111,9 +114,9 @@ including type-only imports, re-exports and aliases:
 - Inward packages never import adapters and import only the workspace packages
   the ADR-003 diagram allows (no sideways edge such as `renderer-core` ->
   `music-application`); packages never import apps; apps never import each
-  other; React only in `score-ui`, `apps/web` and `apps/mcp/view`; MCP SDK only
-  in `apps/mcp`; Supabase client only in `apps/web`; browser code never imports
-  server infrastructure.
+  other; React only in `score-ui`, `ui`, `apps/web` and `apps/mcp/view`; Radix
+  only in `ui`; MCP SDK only in `apps/mcp`; Supabase client only in
+  `apps/web`; browser code never imports server infrastructure.
 - No import cycles; production code never imports devDependencies or the
   test fixtures.
 

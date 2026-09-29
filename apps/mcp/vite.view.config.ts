@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { type Plugin, defineConfig } from 'vite';
 import { viteSingleFile } from 'vite-plugin-singlefile';
@@ -95,6 +96,8 @@ export default defineConfig({
   base: '/',
   plugins: [
     react(),
+    // Tailwind CSS v4 compiles view/src/view.css; singlefile inlines the result.
+    tailwindcss(),
     viteSingleFile({ useRecommendedBuildConfig: false }),
     publishPianoSoundFont(),
     checkViewBuild(),

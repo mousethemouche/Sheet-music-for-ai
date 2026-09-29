@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/styles/theme.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "iconLibrary": "lucide",
+  "aliases": {
+    "components": "@sheet-music/ui/components",
+    "ui": "@sheet-music/ui/components",
+    "utils": "@sheet-music/ui/lib/utils",
+    "lib": "@sheet-music/ui/lib",
+    "hooks": "@sheet-music/ui/hooks"
+  }
+}

@@ -65,6 +65,12 @@ describe('architecture rules on the forbidden fixture', () => {
       to: 'node_modules/test-runner/dist/index.js',
     },
     {
+      shape: 'a Radix primitive re-exported by score-ui instead of the design system',
+      from: 'packages/score-ui/src/imports-radix.ts',
+      rule: 'radix-only-in-ui-package',
+      to: 'node_modules/radix-ui/index.js',
+    },
+    {
       shape: 'two modules importing each other',
       from: 'packages/music-domain/src/cycle-a.ts',
       rule: 'no-circular',
@@ -79,6 +85,11 @@ describe('architecture rules on the forbidden fixture', () => {
       v.from.startsWith('packages/music-domain/src/compliant'),
     );
     expect(compliant).toEqual([]);
+  });
+
+  it('accepts the design system (packages/ui) importing Radix', () => {
+    const designSystem = violations.filter((v) => v.from.startsWith('packages/ui/'));
+    expect(designSystem).toEqual([]);
   });
 
   it('accepts a test importing a devDependency', () => {

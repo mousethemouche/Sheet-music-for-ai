@@ -2,6 +2,7 @@
   "name": "architecture-rule-fixture",
   "private": true,
   "dependencies": {
+    "radix-ui": "0.0.0",
     "react": "0.0.0",
     "ui-kit": "npm:react@0.0.0",
     "vexflow": "0.0.0"

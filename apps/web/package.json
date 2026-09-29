@@ -17,6 +17,7 @@
     "@sheet-music/renderer-core": "workspace:*",
     "@sheet-music/renderer-vexflow": "workspace:*",
     "@sheet-music/score-ui": "workspace:*",
+    "@sheet-music/ui": "workspace:*",
     "@supabase/supabase-js": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
@@ -24,10 +25,12 @@
   },
   "devDependencies": {
     "@sheet-music/test-fixtures": "workspace:*",
+    "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "tailwindcss": "catalog:",
     "vite": "catalog:"
   }
 }

@@ -28,6 +28,7 @@ packages are private, ESM (`"type": "module"`) and named `@sheet-music/<dir>`.
 | `packages/playback-core`        | `PlaybackPlan`, timeline compiler, engine port (#6)                                             | any            |
 | `packages/playback-spessasynth` | SpessaSynth adapter (#6, #23)                                                                   | browser        |
 | `packages/score-ui`             | React ScorePlayer and annotation overlay over the ports (#7)                                    | browser        |
+| `packages/ui`                   | Design system: shadcn/ui components (Radix, customised) and the Tailwind CSS v4 theme tokens    | browser        |
 | `packages/test-fixtures`        | F01-F12 ScoreSpec fixture catalogue (#18)                                                       | tests          |
 | `packages/persistence-postgres` | `pg` repositories for scores and drafts (#9, #22, #27)                                          | Node           |
 | `packages/auth-jwt`             | Supabase JWT/JWKS verification to the neutral `UserId` (#26)                                    | Node           |
@@ -70,6 +71,44 @@ A built `dist/` per package was rejected: it adds a build order, stale-output
 risk and `.js` import suffixes, and nothing consumes packages outside this
 workspace.
 
+## CSS and the design system
+
+`packages/ui` (`@sheet-music/ui`) is the design system, also source-first. It
+has no `"."` entry; its `exports` are per-file subpaths:
+
+- `@sheet-music/ui/components/<name>`: the components, one file each
+  (`button`, `input`, `label`, `card`, `badge`, `alert`, `skeleton`,
+  `empty`, `slider`, `switch`, and the project-owned `spinner` and `chip`;
+  theme.css scans the whole directory, so a component or part nothing uses
+  is removed rather than kept);
+- `@sheet-music/ui/lib/utils`: `cn` (class joining with Tailwind conflict
+  resolution), so score-ui and the apps need no dependency of their own;
+- `@sheet-music/ui/styles/theme.css`: the ONE token file (light and dark,
+  shadcn names) with its `@theme` mapping and the `focus-ring` utility.
+
+Tailwind CSS v4 is compiled by each host's Vite build (`@tailwindcss/vite` in
+`apps/web/vite.config.ts` and `apps/mcp/vite.view.config.ts`), from one entry
+stylesheet per host: `apps/web/src/styles/app.css` (imported only by
+`main.tsx`) and `apps/mcp/view/src/view.css` (inlined into the single-file
+View). Each entry does `@import 'tailwindcss' source(none)`, imports
+`theme.css` and lists its own `@source` directories: the host's `src` and
+`packages/score-ui/src` (theme.css adds `packages/ui/src/components` itself).
+A missing `@source` leaves classes unstyled without any build error. For the
+web, `apps/web/test/stylesheet-sources.test.ts` (`pnpm test`) builds
+`app.css` and fails if a class used by only one scanned source is missing;
+for the View, the MCP-UI suite checks computed styles and fails
+(MCP_VIEW.md §6).
+
+The components come from the shadcn/ui CLI, Radix "new-york" registry (not
+Base UI, the CLI default since July 2026), then customised by hand (each
+file's header says how and why). Only `packages/ui` has a `components.json`.
+To add one: `pnpm dlx shadcn@4.21.0 add <name> --cwd packages/ui --yes`, into
+a path that does not exist yet (an overwrite prompt hangs, even with `--yes`);
+then format it, remove `"use client"`, replace the focus styles with
+`focus-ring`, remove every `dark:` class (the theme travels through tokens)
+and declare any new dependency in `packages/ui/package.json` and the catalog.
+The `shadcn` package itself is never installed.
+
 ## TypeScript
 
 `tsconfig.base.json` is strict (`strict`, `noUncheckedIndexedAccess`,
@@ -77,6 +116,8 @@ workspace.
 `noImplicitReturns`). Each package extends it and narrows its environment:
 pure packages get no DOM and no Node types; browser packages get the DOM lib;
 Node packages get `@types/node`; React packages add `jsx: react-jsx`.
+`packages/ui` also maps `@sheet-music/ui/*` to `./src/*` in `paths`, for the
+shadcn CLI only (no `baseUrl`: TypeScript 6 rejects it).
 `apps/mcp` disables `exactOptionalPropertyTypes` because the pinned MCP SDK
 types do not compile under it. The root `tsconfig.json` covers root config
 files, `tools/` and every `apps/*/vite*.config.ts`.
@@ -112,8 +153,8 @@ so the projects are disjoint:
 | `mcp-ui`       | `*.mcpui.test.ts(x)`                   | Chromium (Playwright provider) |
 | `architecture` | `tools/architecture/*.test.ts`         | Node                           |
 
-React code, and therefore `*.test.tsx`, exists only in `score-ui`, `apps/web`
-and `apps/mcp/view`. Tests may sit next to the code (`src/**`) or in a
+React code, and therefore `*.test.tsx`, exists only in `score-ui`, `ui`,
+`apps/web` and `apps/mcp/view`. Tests may sit next to the code (`src/**`) or in a
 package-level `test/` directory. A test imports the real module under test.
 
 Integration and MCP-UI run files serially in one worker
@@ -134,27 +175,31 @@ type-only imports, re-exports, dynamic imports, deep imports and npm aliases
 are all caught:
 
 - `music-domain`, `music-application` and `music-contracts` never depend on
-  React, NestJS, the MCP SDK, `pg`, Supabase, VexFlow, SpessaSynth, Express or
-  `jose`; `music-domain` depends on no other workspace package.
+  React (Radix included), NestJS, the MCP SDK, `pg`, Supabase, VexFlow,
+  SpessaSynth, Express or `jose`; `music-domain` depends on no other
+  workspace package.
 - Inward packages follow the ADR-003 diagram as an allow-list of workspace
   imports (besides themselves, and the fixtures from tests):
   `music-contracts` -> `music-domain`; `music-application` -> `music-domain`,
   `music-contracts`; `renderer-core` and `playback-core` -> `music-domain`;
-  `score-ui` -> `music-domain`, `renderer-core`, `playback-core`. A sideways
-  or outward edge (for example `renderer-core` -> `music-application`, or
-  `music-contracts` -> `music-application`) is rejected, by relative path too.
+  `score-ui` -> `music-domain`, `renderer-core`, `playback-core`, `ui`; `ui`
+  (the design system) -> none. A sideways or outward edge (for example
+  `renderer-core` -> `music-application`, or `music-contracts` ->
+  `music-application`) is rejected, by relative path too.
 - `renderer-core` never imports VexFlow; `playback-core` never imports
   SpessaSynth; `score-ui` never imports either library or their adapter
   packages; renderer and playback packages never import each other.
 - VexFlow only in `renderer-vexflow`, SpessaSynth only in
   `playback-spessasynth`, the MCP SDK only in `apps/mcp`, the Supabase client
-  only in `apps/web`, React only in `score-ui`, `apps/web` and `apps/mcp/view`.
-- Inward packages (domain, contracts, application, ports, score-ui, fixtures)
-  never import adapters (`renderer-vexflow`, `playback-spessasynth`,
+  only in `apps/web`, React only in `score-ui`, `ui`, `apps/web` and
+  `apps/mcp/view`, the Radix primitives (`radix-ui`, `@radix-ui/*`) only in
+  `ui`: score-ui and the apps use `@sheet-music/ui`.
+- Inward packages (domain, contracts, application, ports, score-ui, ui,
+  fixtures) never import adapters (`renderer-vexflow`, `playback-spessasynth`,
   `persistence-postgres`, `auth-jwt`, `server-common`).
 - Packages never import apps; apps never import other apps (MCP never goes
   through the REST app).
-- Browser code (`apps/web/src`, `apps/mcp/view`, `score-ui`) never imports
+- Browser code (`apps/web/src`, `apps/mcp/view`, `score-ui`, `ui`) never imports
   server infrastructure (`persistence-postgres`, `auth-jwt`, `server-common`,
   NestJS, `pg`, Express, `jose`).
 - `apps/mcp/src` and `apps/mcp/view` never import each other.
@@ -175,8 +220,9 @@ every rule.
 packages in its own committed `node_modules`) and proves that a type-only
 import, an npm alias, a re-export, a relative-path import of an adapter, a
 sideways relative import between inward packages, a devDependency (entry
-point under `dist/`) in production code and an import cycle are rejected,
-while compliant domain code and a test importing a devDependency are accepted.
+point under `dist/`) in production code, an import cycle and a Radix primitive
+used from score-ui are rejected, while compliant domain code, the design
+system importing Radix and a test importing a devDependency are accepted.
 
 ## Pinned versions
 
@@ -200,6 +246,19 @@ registry on 2026-09-28:
 - pnpm 10 skips dependency install scripts; `@swc/core` and `esbuild` are
   listed in `ignoredBuiltDependencies` because their native binaries come
   through optional dependencies.
+- Design system (2026-09-29, all the newest releases): Tailwind CSS 4.3.3 with
+  `@tailwindcss/vite` 4.3.3 (peer `vite ^5.2 || ^6 || ^7 || ^8`; its native
+  `@tailwindcss/oxide` and `lightningcss` binaries come through optional
+  dependencies, no install script), `radix-ui` 1.6.7 (the unified Radix
+  package the new-york components import; peers React `^19.0`),
+  `class-variance-authority` 0.7.1 and `cn` 0.4.0 (a v0.x release of
+  September 2026 that replaces `clsx` + `tailwind-merge` with the same
+  semantics; the fallback is a local `cn` from those two, behind the same
+  `@sheet-music/ui/lib/utils` path). The shadcn CLI 4.21.0 runs through
+  `pnpm dlx` and is never a dependency: it would add
+  `@modelcontextprotocol/sdk ^1.26` and `zod ^3` next to the pinned ones.
+  For the same reason the base style's `@import "shadcn/tailwind.css"` is not
+  used, and `tw-animate-css` waits for a Dialog, Popover or Tooltip.
 
 ## CI
 

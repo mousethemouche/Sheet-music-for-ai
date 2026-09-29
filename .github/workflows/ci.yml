@@ -32,7 +32,7 @@ jobs:
       #   changes start no database and no browser (only the `docs` job runs).
       # - mcp_ui: a change the MCP-UI suite depends on: the MCP server and View,
       #   any workspace package (contracts, domain, renderer, playback, score-ui,
-      #   auth, persistence, fixtures), the playback assets, migrations, the
+      #   ui, auth, persistence, fixtures), the playback assets, migrations, the
       #   lockfile and the shared build/test configuration.
       # A manual run, a release tag or an unknown base runs everything.
       - id: diff

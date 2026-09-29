@@ -19,8 +19,9 @@ import type { BrowserCommandContext } from 'vitest/node';
  * are integration files; the public-surface inventory check
  * (tools/inventory) is a unit file.
  *
- * React (and therefore *.test.tsx) is only allowed in score-ui, apps/web and
- * apps/mcp/view; `pnpm check:arch` enforces that boundary.
+ * React (and therefore *.test.tsx) is only allowed in score-ui, ui (the design
+ * system), apps/web and apps/mcp/view; `pnpm check:arch` enforces that
+ * boundary.
  */
 const SOURCES = '{apps,packages}/**';
 const IGNORED = [...configDefaults.exclude, '**/dist/**'];
