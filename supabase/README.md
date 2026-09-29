@@ -4,7 +4,8 @@
 deployed to the **Supabase cloud** project with the Supabase CLI: owner-scoped
 `scores` and `score_drafts` with Row Level Security for the server-only role
 `score_owner` (#27), expired-draft cleanup (#22), the rate-limit store (#24),
-and the pg_cron jobs that clean up both.
+the pg_cron jobs that clean up both, and the Custom Access Token Hook that
+binds MCP OAuth tokens to the MCP resource (#26, see below).
 Tables, access paths and the test harness are described in
 [docs/architecture/DATABASE.md](../docs/architecture/DATABASE.md).
 
@@ -41,7 +42,8 @@ The CLI records applied versions in `supabase_migrations.schema_migrations`.
 Plain Postgres has no `auth` schema and no Supabase roles. The test harness
 (`@sheet-music/persistence-postgres/testing`) applies
 `packages/persistence-postgres/testing/supabase-bootstrap.sql` first: the
-`anon` / `authenticated` / `service_role` roles (only if missing), a minimal
+`anon` / `authenticated` / `service_role` roles and Supabase Auth's
+`supabase_auth_admin` (only if missing), a minimal
 `auth.users`, Supabase's `auth.uid()` and `auth.jwt()`, and Supabase's default
 privileges on `public`. Apply the same file before pushing to a fresh local
 database with the CLI:
@@ -73,3 +75,103 @@ supabase db push
 ```
 
 Never commit connection strings, service-role keys or access tokens.
+
+The servers reach the database over TLS verified against the project's root
+certificate (`DATABASE_CA_CERT`, docs/architecture/DATABASE.md §10.2): in
+Database Settings, turn on "Enforce SSL on incoming connections" and
+download the certificate (SSL Configuration) for the Vercel projects
+(docs/deploy/VERCEL.md §6).
+
+## Custom Access Token Hook
+
+`20260929092000_mcp_access_token_hook.sql` creates
+`auth_hooks.custom_access_token_hook(jsonb)` and its settings table
+`private.app_settings`. For a token issued to an OAuth client (claims carry
+`client_id`) it turns `aud: "authenticated"` into
+`["authenticated", "<MCP resource>"]`, which the MCP server's resource-bound
+verifier requires; web session tokens are returned unchanged, and while the
+`mcp_resource` setting is missing every token is returned unchanged (fail
+closed). Design, sources and residual risks:
+[docs/architecture/AUTH_MCP_OAUTH.md](../docs/architecture/AUTH_MCP_OAUTH.md)
+§4.1. Local tests: OAUTH-05
+(`packages/persistence-postgres/test/hook/`).
+
+The migration only creates the function. The hook stays off until it is
+enabled in the project's Auth configuration, and binds nothing until the
+setting is inserted. Once enabled, Supabase Auth calls it for **every**
+access token, web sign-ins included: if it fails (a missing grant, for
+example), every sign-in and refresh fails with HTTP 500. Hence the order
+below, with a check before enabling.
+
+1. Push the migration (`supabase db push`, "Cloud deployment" above).
+2. Check what Supabase Auth's role can do (SQL editor or `psql` as
+   `postgres`); expect `t, t, t, t, f, f, f`:
+
+   ```sql
+   select
+     has_schema_privilege('supabase_auth_admin', 'auth_hooks', 'USAGE'),
+     has_function_privilege('supabase_auth_admin', 'auth_hooks.custom_access_token_hook(jsonb)', 'EXECUTE'),
+     has_schema_privilege('supabase_auth_admin', 'private', 'USAGE'),
+     has_table_privilege('supabase_auth_admin', 'private.app_settings', 'SELECT'),
+     (select relrowsecurity from pg_class where oid = 'private.app_settings'::regclass),
+     has_function_privilege('authenticated', 'auth_hooks.custom_access_token_hook(jsonb)', 'EXECUTE'),
+     has_function_privilege('anon', 'auth_hooks.custom_access_token_hook(jsonb)', 'EXECUTE');
+   ```
+
+3. Enable the hook with the Management API, which changes only these two
+   fields (a personal access token in `SUPABASE_ACCESS_TOKEN`, never
+   committed):
+
+   ```sh
+   curl -sS -X PATCH "https://api.supabase.com/v1/projects/<project-ref>/config/auth" \
+     -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" \
+     -d '{"hook_custom_access_token_enabled": true,
+          "hook_custom_access_token_uri": "pg-functions://postgres/auth_hooks/custom_access_token_hook"}'
+   ```
+
+   Or in the Dashboard: Authentication > Hooks, add the Custom Access Token
+   hook, type Postgres, schema `auth_hooks`, function
+   `custom_access_token_hook`. There is no `supabase/config.toml` here; do not
+   create one only for the hook, since `supabase config push` would also push
+   every other Auth value it holds.
+
+4. Sign in on the web app: the session must still work (its token keeps
+   `aud: "authenticated"`). To roll back, send the same request with
+   `"hook_custom_access_token_enabled": false`.
+5. When the MCP server's public URL is known, insert the resource. The value
+   must be exactly the canonical form the MCP server derives from
+   `MCP_PUBLIC_URL` (lowercase scheme and host, no trailing slash, no query),
+   for example `https://mcp.example.com/mcp`; a check constraint refuses
+   other forms:
+
+   ```sql
+   insert into private.app_settings (key, value)
+   values ('mcp_resource', to_jsonb('https://<mcp-host>/mcp'::text))
+   on conflict (key) do update set value = excluded.value;
+   ```
+
+   If `MCP_PUBLIC_URL` changes, update this row at the same time: access
+   tokens already issued keep the old audience until they expire (1 hour by
+   default); refreshed ones get the new one.
+
+6. Optional, for pre-registered clients only: restrict binding to a list of
+   OAuth client IDs (lowercase UUIDs). With dynamic client registration,
+   leave it unset. Delete the row to lift the restriction.
+
+   ```sql
+   insert into private.app_settings (key, value)
+   values ('mcp_allowed_client_ids', '["<client-uuid>"]'::jsonb)
+   on conflict (key) do update set value = excluded.value;
+   ```
+
+7. Dry run as the owner; without an allow-list (or with a client ID it
+   lists) expect `"aud": ["authenticated", "<MCP resource>"]`:
+
+   ```sql
+   select auth_hooks.custom_access_token_hook(
+     '{"claims": {"aud": "authenticated", "client_id": "00000000-0000-4000-8000-000000000000"}}'::jsonb
+   );
+   ```
+
+8. The OAUTH-04 release smoke (AUTH_MCP_OAUTH.md §4) then checks a real
+   OAuth token end to end.

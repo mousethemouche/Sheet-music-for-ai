@@ -417,9 +417,18 @@ more than once; later calls reject with a `PersistenceError`.
 - A long-running server may use the direct connection (`db.<ref>.supabase.co:5432`,
   IPv6 unless the IPv4 add-on is enabled) or the session pooler (port 5432 on
   the pooler host); the adapter behaves the same on all three.
-- TLS: pass `ssl` explicitly (for example `{ ca: <Supabase root certificate> }`)
-  and keep `sslmode` out of the URL: parameters in the URL override `ssl` in
-  node-postgres.
+- TLS: set by `DATABASE_CA_CERT` only (`src/tls.ts`, validated by both
+  servers' configuration at start). With it, the pool passes
+  `ssl: { ca, rejectUnauthorized: true }`: every connection is TLS and the
+  server certificate and host name are verified against that CA (on
+  Supabase, the project's root certificate, Database Settings > SSL
+  Configuration); a server without TLS or with another certificate is
+  refused, never used in plaintext. `DATABASE_URL` must carry no TLS
+  parameter (`sslmode`, `sslrootcert`, ...), since URL parameters override
+  `ssl` in node-postgres; the configuration refuses one. Without
+  `DATABASE_CA_CERT` only a loopback database (local development and tests)
+  is accepted. Supabase's "Enforce SSL on incoming connections" refuses
+  plaintext clients on the server side as well.
 - Errors of idle connections (server restart, network drop) go to
   `onIdleError` instead of crashing the process; the pool has already dropped
   the connection. A connection lost during a call rejects that call and is

@@ -4,8 +4,8 @@ Verifier and identity part of issue #26 (ADR-005). Package:
 `packages/auth-jwt`. The HTTP/MCP wiring is in place (§6: `apps/mcp/src/auth.ts`,
 `apps/api/src/auth.ts`) with its OAUTH-02 wire tests (§7); the OAUTH-04
 provider smoke against the real Supabase project and a real host remains a
-release gate. Research below was done on 2026-09-28 against the primary
-sources listed at the end.
+release gate. Research below was done on 2026-09-28 (§4.1: 2026-09-29)
+against the primary sources listed at the end.
 
 ## 1. What Supabase actually issues
 
@@ -21,7 +21,7 @@ sources listed at the end.
 | authorization server     | issuer `https://<ref>.supabase.co/auth/v1`; RFC 8414 metadata at `https://<ref>.supabase.co/.well-known/oauth-authorization-server/auth/v1`; OIDC discovery also offered |
 | OAuth 2.1 server         | beta; currently **disabled** on our project; enabling it (and dynamic registration) is a later-phase configuration change                                                |
 | RFC 8707 `resource`      | **not honored**: tokens are not bound to the requested resource and keep `aud: "authenticated"`                                                                          |
-| Custom Access Token Hook | runs for OAuth tokens too and can set `aud` per `client_id` (Supabase "Token Security & RLS" guide)                                                                      |
+| Custom Access Token Hook | runs before every access token is signed (sign-in, OAuth grant, refresh); `claims.client_id` marks OAuth tokens; the claims it returns are signed, `aud` string or array |
 
 Two open provider issues matter for us (not verified locally; the OAUTH-04
 smoke must check them on the real project):
@@ -134,14 +134,17 @@ itself (§1), so conformance depends on a Supabase configuration change.
 **Default, and the only conformant configuration: resource-bound.** The MCP
 verifier uses `audiences: [canonicalResourceUri(MCP_URL)]` and
 `client: { kind: 'oauth' }` (plus `allowedClientIds` if clients are
-pre-registered). A Custom Access Token Hook adds the canonical MCP resource
-URI (for example `https://mcp.example.com/mcp`) to `aud` for tokens that
-carry a `client_id`. Web session tokens (no hook, `aud` only
-`authenticated`) and any token not minted through that path are refused.
-Without the hook every real token fails with `WRONG_AUDIENCE` and gets the 401
-challenge: the default fails closed, it never widens access.
+pre-registered). The Custom Access Token Hook of §4.1 adds the canonical MCP
+resource URI (for example `https://mcp.example.com/mcp`) to `aud` for tokens
+that carry a `client_id`. Web session tokens (the hook leaves them
+`aud: "authenticated"`) and any token not minted through that path are
+refused. Until the hook is enabled and configured, every real token fails
+with `WRONG_AUDIENCE` and gets the 401 challenge: the default fails closed, it
+never widens access.
 
-**Release gate (#26, OAUTH-04).** The hook is not deployed yet. No release
+**Release gate (#26, OAUTH-04).** The hook is written and tested locally
+(migration `supabase/migrations/20260929092000_mcp_access_token_hook.sql`,
+OAUTH-05) but not deployed or enabled on the cloud project yet. No release
 that accepts MCP tokens ships until the OAUTH-04 smoke shows, on the real
 project, a token from the real OAuth flow carrying the MCP resource in `aud`
 and being accepted by the resource-bound verifier, while a web session token
@@ -170,6 +173,88 @@ record, on these residual risks:
 Logout does not revoke access tokens already issued: a stateless access token
 stays valid until its `exp` (Supabase default 1 hour). No server mechanism for
 instant invalidation exists, and none is claimed.
+
+### 4.1 The Custom Access Token Hook (implementation notes)
+
+What it relies on, read in the Supabase Auth source (`supabase/auth` master,
+release v2.197.0); the documentation pages are less precise:
+
+- Auth calls a Postgres hook as `select "<schema>"."<function>"($1)` with
+  the event as JSON, as its own role `supabase_auth_admin` (search_path
+  `auth`, no BYPASSRLS), inside the token transaction, under a short
+  statement timeout (2 s by default). It runs before every access token is
+  signed: any sign-in, the OAuth 2.1 server's authorization-code grant
+  (`authentication_method: "oauth_provider/authorization_code"`) and every
+  refresh (`"token_refresh"`).
+- Event: `{ metadata, user_id, claims, authentication_method }`. The OAuth
+  client is `claims.client_id` (its UUID), present on the first grant and on
+  every refresh of an OAuth session, omitted otherwise; OAuth tokens also
+  carry `claims.scope`. The Token Security guide's example reads a top-level
+  `client_id`; the Auth source has none. So `client_id`, not
+  `authentication_method`, identifies a token issued to an OAuth client.
+- Output: `{ "claims": { ... } }`. Auth checks it against a minimal schema
+  (required `aud`, `exp`, `iat`, `sub`, `email`, `phone`, `role`, `aal`,
+  `session_id`, `is_anonymous`; `aud` a string or an array) and signs the
+  returned claims as they are, so `aud` can be changed and extended to an
+  array. A hook error or an invalid output fails the token request (HTTP 500)
+  for every user, web sign-ins included.
+- The `aud` in the event is `"authenticated"` or `["authenticated"]`: Auth's
+  JWT library serializes a single audience as an array until the process has
+  signed its first token. The hook accepts both.
+- Auth's own bearer check (`parseJWTClaims`) does not verify `aud`, so an
+  array `aud` keeps `/auth/v1/user` and logout working.
+
+What `auth_hooks.custom_access_token_hook(event jsonb)` does:
+
+1. No non-empty string `claims.client_id`: returns the claims unchanged. Web
+   session tokens never gain the MCP audience.
+2. Reads `private.app_settings`. `mcp_resource` unset: unchanged (fail
+   closed, the resource-bound verifier answers `WRONG_AUDIENCE`).
+   `mcp_allowed_client_ids` set and not naming the client: unchanged.
+3. Otherwise `aud` becomes the existing audience(s) plus the resource, without
+   duplicates: `"authenticated"` -> `["authenticated", "https://mcp.example.com/mcp"]`.
+   Every other claim is returned as it came. This is the shape the test
+   issuer's `mcpToken` produces (docs/testing/HARNESS.md).
+
+Settings, rows in `private.app_settings` written by the migration role only,
+after deployment (supabase/README.md, "Custom Access Token Hook"):
+
+| Key                      | Value                                                                                                                                                             | When absent                                                                     |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `mcp_resource`           | JSON string, exactly `canonicalResourceUri(MCP_PUBLIC_URL)`; a check constraint refuses a trailing slash, uppercase host, query, fragment, credentials, non-ASCII | the hook binds nothing (fail closed)                                            |
+| `mcp_allowed_client_ids` | non-empty JSON array of lowercase OAuth client UUIDs                                                                                                              | every OAuth client of the project is bound (what dynamic registration requires) |
+
+Any other key is refused, so a misspelled key cannot silently leave the hook
+off.
+
+Privileges. SECURITY INVOKER with `search_path = ''`, as Supabase recommends
+for hooks (no SECURITY DEFINER). `supabase_auth_admin` gets USAGE on
+`auth_hooks`, EXECUTE on the function, USAGE on `private` and SELECT on
+`private.app_settings`, nothing more: it cannot change the settings. `anon`,
+`authenticated`, `service_role`, `score_owner` and PUBLIC can neither call the
+hook nor read the settings. The function has a schema of its own,
+`auth_hooks`, not exposed by the Data API, so the Auth role's USAGE covers
+this one function. `private.app_settings` has no Row Level Security: its only
+reader has no BYPASSRLS, so a policy-less RLS table would hide every row from
+it; grants are the control, and the values (a public URL, client IDs) are not
+secret.
+
+Residual risks the hook does not remove:
+
+- The token keeps `authenticated` in `aud`, so it is still a valid user token
+  for Supabase's own APIs (risk 2 of the interim list applies here too; the
+  score tables grant nothing to the API roles). Dropping `authenticated`
+  would narrow this, but only after OAUTH-04 shows that nothing in the host
+  flow depends on it.
+- With dynamic client registration, every client a user consents to receives
+  MCP-bound tokens for that user; `mcp_allowed_client_ids` narrows this once
+  clients are pre-registered.
+
+Enabling it is project configuration, not schema: the Management API fields
+`hook_custom_access_token_enabled` and `hook_custom_access_token_uri`
+(`pg-functions://postgres/auth_hooks/custom_access_token_hook`), or the
+Dashboard's Authentication > Hooks page, after the migration is pushed and
+its grants checked. Exact steps: supabase/README.md.
 
 ## 5. Discovery and challenge builders
 
@@ -235,6 +320,7 @@ What the apps do, and where (MCP_SERVER.md §1-§2, API.md):
 | OAUTH-02 (unit) | `packages/auth-jwt/test/oauth-02-discovery.test.ts`                                          | metadata document and URL, canonical resource, challenge per reason, bearer extraction                                                                                                                                                                                                |
 | OAUTH-03        | `packages/auth-jwt/test/oauth-03-identity.test.ts`                                           | A/B principals, email/metadata/look-alike claims ignored, email change, frozen principal                                                                                                                                                                                              |
 | OAUTH-02 (wire) | `apps/mcp/test/oauth-02-mcp-auth.int.test.ts`, `apps/api/test/oauth-02-api-auth.int.test.ts` | 401 + reachable metadata on the real `/mcp`, one expired/wrong-resource request, one missing-token check per protected REST route                                                                                                                                                     |
+| OAUTH-05        | `packages/persistence-postgres/test/hook/oauth-05-access-token-hook.int.test.ts`             | the hook of §4.1 run as `supabase_auth_admin`: OAuth token (string or array `aud`, grant or refresh) bound, session tokens unchanged, fail closed without the setting or outside the allow-list, privileges, settings validation                                                      |
 | OAUTH-04        | release smoke (release gate, §4)                                                             | real Supabase OAuth flow with a real host; the access token carries the MCP resource in `aud` (hook) and is accepted, session and foreign-audience tokens refused; the issues of §1; the scope set of §5                                                                              |
 
 ## Sources
@@ -245,6 +331,10 @@ What the apps do, and where (MCP_SERVER.md §1-§2, API.md):
 - Supabase, Token Security & RLS: <https://supabase.com/docs/guides/auth/oauth-server/token-security>
 - Supabase, JWT Claims Reference: <https://supabase.com/docs/guides/auth/jwt-fields>
 - Supabase, JWT Signing Keys: <https://supabase.com/docs/guides/auth/signing-keys>
+- Supabase, Auth Hooks: <https://supabase.com/docs/guides/auth/auth-hooks>
+- Supabase, Custom Access Token Hook: <https://supabase.com/docs/guides/auth/auth-hooks/custom-access-token-hook>
+- Supabase Auth source, release v2.197.0 (read 2026-09-29): `internal/tokens/service.go` (`GenerateAccessToken`, `MinimumViableTokenSchema`), `internal/hooks/v0hooks/v0hooks.go` (`CustomAccessTokenInput`), `internal/hooks/hookspgfunc/hookspgfunc.go`, `internal/api/oauthserver/handlers.go`: <https://github.com/supabase/auth>
+- Supabase Management API, `PATCH /v1/projects/{ref}/config/auth`: <https://api.supabase.com/api/v1>
 - supabase/auth#2820: <https://github.com/supabase/auth/issues/2820>
 - anthropics/claude-ai-mcp#1038: <https://github.com/anthropics/claude-ai-mcp/issues/1038>
 - MCP Authorization 2025-11-25: <https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization>

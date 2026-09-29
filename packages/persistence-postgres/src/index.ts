@@ -18,3 +18,4 @@ export {
   createPostgresRateLimitStore,
 } from './rate-limit';
 export { createSavedScoreRepository } from './saved-scores';
+export { databaseTls, databaseTlsProblems } from './tls';

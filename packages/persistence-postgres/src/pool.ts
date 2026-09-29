@@ -14,7 +14,7 @@ export interface PostgresPoolConfig {
   readonly connectionString: string;
   /** Maximum connections held by this process. Default 5. */
   readonly max?: number;
-  /** TLS options passed to node-postgres (for Supabase: `{ ca: <Supabase root certificate> }`). */
+  /** TLS options passed to node-postgres; the servers build them with `databaseTls` (tls.ts). */
   readonly ssl?: PoolConfig['ssl'];
   /** How long a call waits for a connection before it fails. Default 5000 ms. */
   readonly connectionTimeoutMillis?: number;

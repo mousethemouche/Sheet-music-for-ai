@@ -3,6 +3,9 @@
 -- Recreates the part of the Supabase platform that supabase/migrations relies
 -- on, before the migrations run:
 -- - the API roles anon, authenticated and service_role;
+-- - supabase_auth_admin, the role Supabase Auth runs Postgres Auth Hooks as
+--   (no BYPASSRLS, as on Supabase; tests switch to it with SET ROLE, so it
+--   gets neither LOGIN nor the CREATEROLE it has there);
 -- - the auth schema with a minimal auth.users table;
 -- - auth.uid() and auth.jwt(), defined exactly as Supabase Auth defines them
 --   (they read the request.jwt.* settings that PostgREST, or a test, sets);
@@ -22,7 +25,8 @@ begin
     select * from (values
       ('anon', 'nologin noinherit'),
       ('authenticated', 'nologin noinherit'),
-      ('service_role', 'nologin noinherit bypassrls')
+      ('service_role', 'nologin noinherit bypassrls'),
+      ('supabase_auth_admin', 'nologin noinherit')
     ) as r (name, options)
   loop
     if not exists (select 1 from pg_catalog.pg_roles where rolname = api_role.name) then

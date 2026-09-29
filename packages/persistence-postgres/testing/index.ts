@@ -13,6 +13,8 @@
  *   Supabase API role with JWT claims, the way PostgREST does for a Data API
  *   or GraphQL request.
  * - seedTestUsers: insert the F12 users A and B into auth.users.
+ * - TEST_DATABASE_CA_CERT: a CA certificate for DATABASE_CA_CERT that no
+ *   server can match (TLS refusal tests).
  */
 import { readFile, readdir } from 'node:fs/promises';
 import { Client, Pool, escapeIdentifier, type PoolClient } from 'pg';
@@ -199,6 +201,27 @@ export const TEST_USER_B: TestUser = {
   id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   email: 'user-b@example.test',
 };
+
+/**
+ * A self-signed CA certificate for DATABASE_CA_CERT in tests. Its private key
+ * was discarded when it was made, so no server certificate can chain to it: a
+ * connection that verifies against it never succeeds, and the local test
+ * servers offer no TLS at all.
+ */
+export const TEST_DATABASE_CA_CERT = `-----BEGIN CERTIFICATE-----
+MIIB3jCCAYWgAwIBAgIUOQPrxXmBGROM1Z9ECrM1P+mhazswCgYIKoZIzj0EAwIw
+RDFCMEAGA1UEAww5U2hlZXQgTXVzaWMgZm9yIEFJIHRlc3QgZGF0YWJhc2UgQ0Eg
+KG5vIHByaXZhdGUga2V5IGtlcHQpMCAXDTI2MDkyOTEwMTY1NFoYDzIxMjYwOTA1
+MTAxNjU0WjBEMUIwQAYDVQQDDDlTaGVldCBNdXNpYyBmb3IgQUkgdGVzdCBkYXRh
+YmFzZSBDQSAobm8gcHJpdmF0ZSBrZXkga2VwdCkwWTATBgcqhkjOPQIBBggqhkjO
+PQMBBwNCAAQj/0u/jiAfv7uDduDh5s9mpCpbLpaemWLiWyYl0IBhaodt9wJGApOu
+WoCoVVG7JWXMwLLQ+lkk8Z2cMI5Wr2teo1MwUTAdBgNVHQ4EFgQUmXlWHKc20TsA
+bUDsnnQEMFYyA+QwHwYDVR0jBBgwFoAUmXlWHKc20TsAbUDsnnQEMFYyA+QwDwYD
+VR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNHADBEAiBo71x+1ABFPYLTmBcw4jEo
+r6zfKpQEjBm8EulW816pAQIgG7jCgJp6ql2Z9RwrdndjrAhWKGpx0H69Q9zZdSnr
+88c=
+-----END CERTIFICATE-----
+`;
 
 /** Inserts `users` (default: A and B) into auth.users through the privileged pool. */
 export async function seedTestUsers(

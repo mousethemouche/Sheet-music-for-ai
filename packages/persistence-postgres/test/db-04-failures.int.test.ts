@@ -3,7 +3,8 @@
  * previous row, and a storage failure is an explicit rejection
  * (PersistenceError, reported as DEPENDENCY_UNAVAILABLE by the use cases),
  * never a null row, a 'stale' outcome or an empty page. A broken connection
- * is discarded, so the next call works. Promotion rollback is DRAFT-04 (#22).
+ * is discarded, so the next call works. A pool that requires verified TLS
+ * never falls back to plaintext. Promotion rollback is DRAFT-04 (#22).
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -12,8 +13,14 @@ import {
   createExpiredDraftCleanup,
   createPostgresPersistence,
   createPostgresPool,
+  databaseTls,
 } from '../src';
-import { type TestDatabase, createTestDatabase, seedTestUsers } from '../testing';
+import {
+  TEST_DATABASE_CA_CERT,
+  type TestDatabase,
+  createTestDatabase,
+  seedTestUsers,
+} from '../testing';
 import { Coordinator } from './support/coordination';
 import {
   A,
@@ -214,6 +221,27 @@ describe('DB-04 an unavailable store rejects every call', () => {
       );
     } finally {
       await missing.close();
+    }
+  });
+
+  it('a pool that requires verified TLS rejects a server without it instead of falling back to plaintext', async () => {
+    // Same server and database as the working store; the test servers offer no TLS.
+    const verified = createPostgresPersistence({
+      connectionString: db.url,
+      ...databaseTls(TEST_DATABASE_CA_CERT),
+    });
+    try {
+      await expect(verified.saved.search(A, { tags: [], limit: 20, offset: 0 })).rejects.toEqual(
+        expect.objectContaining({
+          name: 'PersistenceError',
+          operation: 'saved.search',
+          cause: expect.objectContaining({
+            message: expect.stringMatching(/SSL|certificate/i) as unknown,
+          }) as unknown,
+        }),
+      );
+    } finally {
+      await verified.close();
     }
   });
 });
