@@ -271,6 +271,35 @@ export function chordSymbolText(chord: ChordSymbol): string {
   return `${pitchClassText(chord.root)}${body}${alterations}${bass}`;
 }
 
+/** Staff lines as VexFlow numbers them: the bottom line is 1, the top line 5, a space is a half. */
+const BOTTOM_LINE = 1;
+const TOP_LINE = 5;
+
+/**
+ * Whether the fingering of a single note on a staff shared by several
+ * voices goes above its notehead (else below). Next to a note on or beyond
+ * an outer staff line, the outer side is clear of every staff and ledger
+ * line, so the digit goes there, unless another voice sounds a note at or
+ * beyond it at the same onset (that side is the other voice's). Otherwise it
+ * goes on the `preferAbove` side, the one away from the other voices.
+ *
+ * `line` is the note's staff line, `others` the lines of the other voices'
+ * notes starting at its onset on the same staff.
+ */
+export function fingeringGoesAbove(
+  line: number,
+  preferAbove: boolean,
+  others: readonly number[],
+): boolean {
+  if (line >= TOP_LINE && others.every((other) => other < line)) {
+    return true;
+  }
+  if (line <= BOTTOM_LINE && others.every((other) => other > line)) {
+    return false;
+  }
+  return preferAbove;
+}
+
 /** The text of a melodic scale-degree label: its `display`, else e.g. "3", "#4", "b7". */
 export function scaleDegreeText(label: ScaleDegreeLabel): string {
   return label.display ?? `${ALTER_TEXT[label.alter ?? 0] ?? ''}${label.degree}`;

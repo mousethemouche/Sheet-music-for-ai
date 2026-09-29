@@ -6,13 +6,14 @@
  * tuplet groups and where modifiers are anchored. Expected values are written
  * by hand from the fixtures, not computed by adapter code. Glyph geometry is
  * VexFlow's business and is not asserted here; only relative placements the
- * adapter decides (hairpin openings across systems, rows of dynamic marks)
- * are, and real glyph metrics are REN-I01's.
+ * adapter decides (hairpin openings across systems, rows of dynamic marks,
+ * the order of label rows) are, and real glyph metrics are REN-I01/I02's.
  */
 import type { ScoreSpecInput } from '@sheet-music/music-domain';
 import {
   F01,
   F02,
+  F03,
   F04,
   F05,
   F06,
@@ -39,7 +40,7 @@ import {
   Accidental,
   Articulation,
   FretHandFinger,
-  type Modifier,
+  Modifier,
   PedalMarking,
   type StaveNote,
   VexFlow,
@@ -53,6 +54,7 @@ import {
   mountTarget,
   newRenderer,
 } from './support';
+import { CHORD_DEGREES } from './label-scores';
 
 beforeAll(installJsdomLayoutStubs);
 
@@ -451,6 +453,154 @@ describe('REN-01 semantic mapping', () => {
       Number(mark.querySelector('text')?.getAttribute('y')),
     );
     expect(lower).toBeGreaterThan(upper ?? Number.POSITIVE_INFINITY);
+  });
+
+  /**
+   * A bass staff shared by two voices. Bar 1: D2 and F#2 over D1. Bar 2: the
+   * first voice (A0 ... D1) below the second (A2). Bar 3: the first voice
+   * below the staff under a slur, the second voice above it.
+   */
+  const SHARED_BASS = score({
+    id: 'fg',
+    staves: [
+      staff(
+        'fg-lh',
+        'left',
+        [
+          bar('fg-m1', 1, [
+            voice('fg-v1', [
+              note('fg-d2', 'D2', 'half', { fingering: 5 }),
+              note('fg-fs2', 'F#2', 'half', { fingering: 3 }),
+            ]),
+            voice('fg-v2', [note('fg-d1', 'D1', 'whole', { fingering: 5 })]),
+          ]),
+          bar('fg-m2', 2, [
+            voice('fg-v3', [
+              note('fg-a0', 'A0', 'half', { fingering: 5 }),
+              note('fg-d1b', 'D1', 'half', { fingering: 1 }),
+            ]),
+            voice('fg-v4', [note('fg-a2', 'A2', 'whole')]),
+          ]),
+          bar('fg-m3', 3, [
+            voice('fg-v5', [
+              note('fg-c2', 'C2', 'half', { fingering: 2 }),
+              note('fg-e2', 'E2', 'half', { fingering: 1 }),
+            ]),
+            voice('fg-v6', [note('fg-c3', 'C3', 'whole')]),
+          ]),
+        ],
+        'bass',
+      ),
+    ],
+    slurs: [{ id: 'fg-s', startNoteId: 'fg-c2', endNoteId: 'fg-e2' }],
+  });
+
+  it.each([
+    {
+      name: 'first voice beyond the bottom line, nothing lower at its onset: below',
+      fixture: SHARED_BASS,
+      bar: 1,
+      eventId: 'fg-a0',
+      position: Modifier.Position.BELOW,
+    },
+    {
+      name: 'first voice below the bottom line, nothing else starting with it: below',
+      fixture: SHARED_BASS,
+      bar: 0,
+      eventId: 'fg-fs2',
+      position: Modifier.Position.BELOW,
+    },
+    {
+      name: 'first voice beyond the bottom line, second voice lower at its onset: above',
+      fixture: SHARED_BASS,
+      bar: 0,
+      eventId: 'fg-d2',
+      position: Modifier.Position.ABOVE,
+    },
+    {
+      name: 'second voice: below',
+      fixture: SHARED_BASS,
+      bar: 0,
+      eventId: 'fg-d1',
+      position: Modifier.Position.BELOW,
+    },
+    {
+      name: 'first voice beyond the bottom line under a slur: above, the slur is below',
+      fixture: SHARED_BASS,
+      bar: 2,
+      eventId: 'fg-c2',
+      position: Modifier.Position.ABOVE,
+    },
+    {
+      name: 'one voice on the top staff, below it: above, as the hand reads',
+      fixture: F03,
+      bar: 0,
+      eventId: 'f03-rh-n4',
+      position: Modifier.Position.ABOVE,
+    },
+  ])('places a fingering: $name', ({ fixture, bar: barIndex, eventId, position }) => {
+    const { glyphs } = buildFixtureBar(fixture, barIndex);
+    const fingerings = eventGlyph(glyphs, eventId)
+      .note.getModifiers()
+      .filter((modifier) => modifier instanceof FretHandFinger);
+
+    expect(fingerings.map((fingering) => fingering.getPosition())).toEqual([position]);
+  });
+
+  it('stacks the scale degrees of a chord, the top note nearest the staff', async () => {
+    const target = await drawn(CHORD_DEGREES, 1000);
+    const baseline = (id: string): number =>
+      Number(target.querySelector(`[data-scale-degree-id="${id}"] text`)?.getAttribute('y'));
+
+    // C-E-G labelled 1, 3, 5: read top to bottom as 5, 3, 1 under the staff.
+    expect(baseline('a4-sd3')).toBeLessThan(baseline('a4-sd2'));
+    expect(baseline('a4-sd2')).toBeLessThan(baseline('a4-sd1'));
+    // B-D-F-G labelled 7, 2, 4, 5.
+    expect(baseline('a4-sd7')).toBeLessThan(baseline('a4-sd6'));
+    expect(baseline('a4-sd6')).toBeLessThan(baseline('a4-sd5'));
+    expect(baseline('a4-sd5')).toBeLessThan(baseline('a4-sd4'));
+    // Each chord's top label on the row nearest the staff.
+    expect(baseline('a4-sd7')).toBe(baseline('a4-sd3'));
+  });
+
+  it('keeps scale degrees of notes apart in time on one line', async () => {
+    const target = await drawn(RICH_WIRE_FIXTURE, 1000);
+    const baselines = [...target.querySelectorAll('.vf-scale-degree text')].map((text) =>
+      text.getAttribute('y'),
+    );
+
+    expect(baselines).toHaveLength(4);
+    expect(new Set(baselines).size).toBe(1);
+  });
+
+  it('stacks the label rows outward from their staff in engraving order', async () => {
+    // Wide enough for one system: every label is in the same system coordinates.
+    const target = await drawn(RICH_WIRE_FIXTURE, 1000);
+    const baselines = (selector: string): number[] =>
+      [...target.querySelectorAll(`${selector} text`)].map((text) =>
+        Number(text.getAttribute('y')),
+      );
+    const first = (selector: string): number => baselines(selector)[0] ?? Number.NaN;
+    const [depress, release] = baselines('.vf-pedal');
+
+    expect(target.querySelectorAll('[data-system-index]')).toHaveLength(1);
+    // Above the top staff, outward: chord symbols, then the swing indication.
+    expect(first('.vf-swing')).toBeLessThan(first('.vf-chord-symbol'));
+    expect(first('.vf-chord-symbol')).toBeLessThan(
+      first('.vf-notehead[data-note-id="rich-rh-n2"]'),
+    );
+    // Below the top staff: scale degrees, then its dynamics; the bottom staff comes after them.
+    expect(first('[data-scale-degree-id="rich-sd1"]')).toBeLessThan(
+      first('[data-dynamic-id="rich-d1"]'),
+    );
+    expect(first('[data-dynamic-id="rich-d1"]')).toBeLessThan(
+      first('.vf-notehead[data-note-id="rich-lh-n2"]'),
+    );
+    // Below the bottom staff: its dynamics, the pedal ("Ped." and release on one line), the Roman numerals.
+    expect(first('[data-dynamic-id="rich-d3"]')).toBeLessThan(depress ?? Number.NaN);
+    expect(release).toBe(depress);
+    expect(depress).toBeLessThan(first('.vf-roman-numeral'));
+    expect(new Set(baselines('.vf-roman-numeral')).size).toBe(1);
   });
 
   it.each([

@@ -52,6 +52,7 @@ import {
   beamGroups,
   chordSymbolText,
   displayedAccidentals,
+  fingeringGoesAbove,
   vexflowKey,
 } from './notation';
 
@@ -180,15 +181,32 @@ export interface BarGlyphs {
 
 const TEXT_FONT = 'Academico';
 const HARMONY_FONT = { family: TEXT_FONT, size: 12, weight: 'normal', style: 'normal' };
+/**
+ * Room a chord symbol or Roman numeral keeps after its text (half a staff
+ * space): two successive ones of a bar never read as one.
+ */
+const HARMONY_PADDING = 5;
 /** Gap between "Ped." and the release mark of a short pedal span. */
 const PEDAL_GAP = 4;
+/**
+ * Gap a pedal release keeps before the next event of its voice, where the
+ * "Ped." of a pedal change starts, or before the bar line.
+ */
+export const RELEASE_GAP = 3;
 
-/** Width "Ped.", the gap and the release mark take, in the font PedalMarking draws with. */
+/**
+ * Width a pedal span's marks take from its start event to the event (or bar
+ * line) its release is written before: "Ped.", the gap, the release mark and
+ * the gap after it, in the font PedalMarking draws with.
+ */
 export function pedalMarksWidth(): number {
   const width = (glyph: string | undefined): number =>
     VexElement.measureWidth(glyph ?? '', PedalMarking.CATEGORY);
   return (
-    width(PedalMarking.GLYPHS.pedalDepress) + PEDAL_GAP + width(PedalMarking.GLYPHS.pedalRelease)
+    width(PedalMarking.GLYPHS.pedalDepress) +
+    PEDAL_GAP +
+    width(PedalMarking.GLYPHS.pedalRelease) +
+    RELEASE_GAP
   );
 }
 
@@ -287,7 +305,7 @@ function staveNoteFor(
 /** The written notes of an event with their key index; none for a rest. */
 function membersOf(event: MusicalEvent): readonly (Pick<
   Extract<MusicalEvent, { type: 'note' }>,
-  'id' | 'fingering' | 'articulations'
+  'id' | 'fingering' | 'articulations' | 'tie'
 > & {
   readonly keyIndex: number;
 })[] {
@@ -351,6 +369,13 @@ export function buildBar(
   const allVoices: Voice[] = [];
   const notes: NoteGlyph[] = [];
   const lastStaff = score.staves.length - 1;
+  /** Every position of the bar a tickable starts at (events of every staff, harmony labels), in order. */
+  const barOnsets = [
+    ...index.events
+      .filter((indexed) => indexed.location.measureIndex === barIndex)
+      .map((indexed) => indexed.location.offsetInMeasure),
+    ...(prepared.harmonyByBar.get(bar.id) ?? []).map((harmony) => harmony.offset ?? ZERO),
+  ].sort(compareFractions);
 
   const staffGlyphs = score.staves.map((staff, staffIndex): StaffBarGlyphs => {
     const stave = staves[staffIndex];
@@ -365,6 +390,12 @@ export function buildBar(
     const beams: Beam[] = [];
     const tuplets: { tuplet: Tuplet; below: boolean }[] = [];
     const events: EventGlyph[] = [];
+    const voiced: {
+      readonly event: MusicalEvent;
+      readonly note: StaveNote;
+      readonly voiceIndex: number;
+      readonly onset: Fraction;
+    }[] = [];
 
     measure.voices.forEach((voice, voiceIndex) => {
       const located = voice.events.map((event) => {
@@ -438,9 +469,8 @@ export function buildBar(
         beams.push(new Beam(beamNotes, voiceCount === 1));
       }
 
-      // Articulations and fingerings once stem directions are final (after beams).
-      for (const { event, note } of located) {
-        const chordMember = event.type === 'chord';
+      // Articulations once stem directions are final (after beams).
+      for (const { event, indexed, note } of located) {
         const onHeadSide = note.getStemDirection() === Stem.UP ? 'below' : 'above';
         for (const [articulation, keyIndex] of articulationAnchors(event, prepared.colors)) {
           const position =
@@ -452,19 +482,7 @@ export function buildBar(
             keyIndex,
           );
         }
-        for (const member of membersOf(event)) {
-          if (member.fingering !== undefined) {
-            const position = chordMember
-              ? Modifier.Position.RIGHT
-              : staffIndex === 0
-                ? Modifier.Position.ABOVE
-                : Modifier.Position.BELOW;
-            note.addModifier(
-              new FretHandFinger(String(member.fingering)).setPosition(position),
-              member.keyIndex,
-            );
-          }
-        }
+        voiced.push({ event, note, voiceIndex, onset: indexed.location.onset });
       }
 
       // Tuplet numbers go on the beam/stem side, now that stems are final.
@@ -474,6 +492,59 @@ export function buildBar(
         tuplets.push({ tuplet, below });
       }
     });
+
+    // Fingerings once every voice of the staff is built. With one voice, a
+    // note's goes above on the top staff and below on the others. Where voices
+    // share a staff, the first voice's (stems up) goes above and the others'
+    // below, away from the other voices' notes; a note on or beyond an outer
+    // staff line takes the outer side instead (`fingeringGoesAbove`), unless a
+    // slur or tie is drawn there (on the notehead's side). A chord member's
+    // goes right of its notehead.
+    const linesOf = (note: StaveNote): number[] => note.getKeyProps().map((props) => props.line);
+    const curved = (event: MusicalEvent, onset: Fraction): boolean =>
+      membersOf(event).some((member) => member.tie !== undefined) ||
+      (score.slurs ?? []).some((slur) => {
+        const start = index.location(slur.startNoteId);
+        const end = index.location(slur.endNoteId);
+        return (
+          start?.staffIndex === staffIndex &&
+          end !== undefined &&
+          compareFractions(start.onset, onset) <= 0 &&
+          compareFractions(onset, end.onset) <= 0
+        );
+      });
+    for (const { event, note, voiceIndex, onset } of voiced) {
+      const preferAbove = voiceCount > 1 ? voiceIndex === 0 : staffIndex === 0;
+      const above =
+        voiceCount > 1 && !curved(event, onset)
+          ? fingeringGoesAbove(
+              linesOf(note)[0] ?? 0,
+              preferAbove,
+              voiced
+                .filter(
+                  (other) =>
+                    other.voiceIndex !== voiceIndex &&
+                    other.event.type !== 'rest' &&
+                    fractionsEqual(other.onset, onset),
+                )
+                .flatMap((other) => linesOf(other.note)),
+            )
+          : preferAbove;
+      for (const member of membersOf(event)) {
+        if (member.fingering !== undefined) {
+          const position =
+            event.type === 'chord'
+              ? Modifier.Position.RIGHT
+              : above
+                ? Modifier.Position.ABOVE
+                : Modifier.Position.BELOW;
+          note.addModifier(
+            new FretHandFinger(String(member.fingering)).setPosition(position),
+            member.keyIndex,
+          );
+        }
+      }
+    }
 
     events.sort((a, b) => compareFractions(a.onset, b.onset));
 
@@ -510,7 +581,10 @@ export function buildBar(
         labels.map((label) => ({
           id: label.id,
           offset: label.offset,
-          make: () => new TextNote({ text: label.text, duration: 'w', font: HARMONY_FONT }),
+          make: () => {
+            const text = new TextNote({ text: label.text, duration: 'w', font: HARMONY_FONT });
+            return text.setWidth(text.getTextMetrics().width + HARMONY_PADDING);
+          },
         })),
         staffStave,
       );
@@ -550,7 +624,11 @@ export function buildBar(
     });
 
     // Minimum widths the layout asked for at some onsets (`room`, by event):
-    // an invisible note of that width shares the onset's tick context.
+    // an invisible note of that width shares the onset's tick context. It
+    // lasts until the next position of the bar, where a zero-width invisible
+    // note of the same voice starts: justification never brings a voice's
+    // next tickable closer than the width of the one before it, so the room
+    // holds at any bar width, not only at the natural one.
     const spacers: { id: string; offset: Fraction; width: number }[] = [];
     for (const { eventId, onset } of events) {
       const width = room.get(eventId);
@@ -569,11 +647,20 @@ export function buildBar(
       textVoices.push(
         positionedVoice(
           bar.duration,
-          spacers.map(({ id, offset, width }) => ({
-            id,
-            offset,
-            make: () => new GhostNote({ duration: 'w' }).setWidth(width),
-          })),
+          spacers.flatMap(({ id, offset, width }) => {
+            const spacer = {
+              id,
+              offset,
+              make: () => new GhostNote({ duration: 'w' }).setWidth(width),
+            };
+            const next = barOnsets.find((position) => compareFractions(position, offset) > 0);
+            return next === undefined || spacers.some((other) => fractionsEqual(other.offset, next))
+              ? [spacer]
+              : [
+                  spacer,
+                  { id: `${id}:end`, offset: next, make: () => new GhostNote({ duration: 'w' }) },
+                ];
+          }),
           stave,
         ).voice,
       );

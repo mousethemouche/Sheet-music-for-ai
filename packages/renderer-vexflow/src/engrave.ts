@@ -2,21 +2,25 @@
  * Engraving of a prepared score into an SVG element, and the neutral
  * LayoutMap measured from what was drawn (RENDER_PLAYBACK_PORTS.md §2.4-2.7).
  *
- * 1. Every bar is built on placeholder staves to measure its minimum width
- *    and its vertical extent per staff, with the room some onsets need
- *    (short pedal spans, voices moved aside; see `barRoom`).
+ * 1. Every bar is built on placeholder staves to measure its minimum width,
+ *    with the room some onsets need (short pedal spans, voices moved aside;
+ *    see `barRoom`).
  * 2. Bars are broken into systems that fit the width (greedy), then justified.
- * 3. Each system gets label rows (chord symbols above the top staff; scale
- *    degrees, dynamics/hairpins, pedal and Roman numerals below their staff),
- *    is rebuilt on its final staves, formatted and drawn into its own group.
- * 4. Systems are stacked from their measured ink bounds, leaving the
+ * 3. Every system is built and drawn once on provisional staves, into a
+ *    scratch group that is then removed, to measure the real ink of each
+ *    staff's notation and of each label row. `planVertical` stacks the rows
+ *    outward from their staff (`ROWS_ABOVE`, `ROWS_BELOW`), each clear of the
+ *    measured ink before it, and each staff below the lowest row of the one
+ *    above.
+ * 4. Each system is rebuilt on its final staves and drawn into its own group,
+ *    every row on its planned line.
+ * 5. Systems are stacked from their measured ink bounds, leaving the
  *    annotation band above each system that holds an annotated note.
  *
  * Noteheads are located with VexFlow's own geometry (tight glyph metrics);
- * system bounds are measured from the drawn SVG, text included.
+ * ink is measured from the drawn SVG, text from its glyph metrics.
  */
 import {
-  type Fraction,
   type ScoreSpec,
   type TimeSignature,
   compareFractions,
@@ -30,6 +34,7 @@ import type {
   SystemLayout,
 } from '@sheet-music/renderer-core';
 import {
+  Barline,
   BarlineType,
   Curve,
   Element as VexElement,
@@ -38,15 +43,16 @@ import {
   SVGContext,
   Stave,
   StaveConnector,
+  StaveModifierPosition,
   type StaveNote,
   StaveTie,
-  Stem,
 } from 'vexflow/bravura';
 import {
   type BarGlyphs,
   type EventGlyph,
   type NoteGlyph,
   type PreparedScore,
+  RELEASE_GAP,
   buildBar,
   pedalMarksWidth,
 } from './build';
@@ -83,15 +89,27 @@ const NOTE_ROOM = 16;
 /** The last system is justified only when it is at least this full. */
 const JUSTIFY_LAST_RATIO = 0.6;
 const SYSTEM_GAP = 24;
+/** Clearance between the lowest ink of a staff (its label rows included) and the highest ink of the next staff. */
 const STAFF_GAP = 12;
+/** Room kept above a staff's top line and below its bottom line, even with nothing drawn there. */
+const STAFF_ROOM_ABOVE = 1.5 * SPACE;
+const STAFF_ROOM_BELOW = SPACE;
+/** Clearance between a staff's notation and its nearest label row, and between two rows. */
+const ROW_GAP = SPACE / 2;
 const TOP_MARGIN = 8;
 const BOTTOM_MARGIN = 8;
 const LABEL_FONT = 'Academico';
 const DEGREE_FONT_SIZE = 11;
 const SWING_FONT_SIZE = 12;
 const HAIRPIN_HEIGHT = 10;
-/** Distance between two rows of dynamic marks sharing an onset. */
-const DYNAMIC_ROW = 20;
+/** Gap between a hairpin and a dynamic mark written at its start or right after its end. */
+const HAIRPIN_MARK_GAP = 6;
+/** Gap a hairpin keeps before the next event of its staff or the bar line. */
+const HAIRPIN_END_GAP = 6;
+/** A dynamic mark's baseline, below the line its row's hairpins are centered on. */
+const MARK_BASELINE = 6;
+/** Horizontal clearance between two scale degrees on one row. */
+const DEGREE_GAP = 3;
 
 interface Box {
   readonly x: number;
@@ -100,22 +118,11 @@ interface Box {
   readonly height: number;
 }
 
-/** Vertical room a staff needs beyond its lines, in staff spaces. */
-interface StaffExtent {
-  readonly above: number;
-  readonly below: number;
-}
-
 interface BarMeasure {
   readonly content: number;
   readonly showMeter: boolean;
   readonly beginStart: number;
   readonly beginContinued: number;
-  readonly extents: readonly StaffExtent[];
-  readonly hasChordSymbols: boolean;
-  readonly hasRomanNumerals: boolean;
-  /** Rows of dynamic marks each staff needs in this bar (absent: none). */
-  readonly markRows: ReadonlyMap<number, number>;
   /** Minimum widths at some onsets of this bar, by event (see `barRoom`). */
   readonly room: ReadonlyMap<string, number>;
 }
@@ -127,27 +134,100 @@ interface SystemPlan {
   readonly barWidths: readonly number[];
 }
 
-/** Label rows of one staff of one system (y in local system coordinates). */
-interface StaffRows {
-  readonly topLine: number;
-  readonly degreeBaseline: number;
-  readonly dynamicsCenter: number;
-  readonly pedalBaseline: number;
-  readonly romanBaseline: number;
-}
-
-interface SystemRows {
-  readonly staves: readonly StaffRows[];
-  readonly chordBaseline: number;
-  readonly swingBaseline: number;
-}
-
 /** A span (slur, hairpin, pedal) located by its end events. */
 interface Span {
   readonly id: string;
   readonly staffIndex: number;
   readonly startSystem: number;
   readonly endSystem: number;
+}
+
+/**
+ * Label rows, in order outward from their staff. Below a staff: scale
+ * degrees name single notes, so they stay next to them, as fingerings (drawn
+ * with the notes) do; then the staff's dynamics and hairpins; then the
+ * sustain pedal, the outermost performance mark under its staff; then the
+ * Roman numerals, analysis rather than performance, on one uninterrupted line
+ * at the bottom of the system. Above the top staff: chord symbols, then the
+ * swing indication.
+ */
+const ROWS_ABOVE = ['chord-symbols', 'swing'] as const;
+const ROWS_BELOW = ['scale-degrees', 'dynamics', 'pedal', 'roman-numerals'] as const;
+type RowKind = (typeof ROWS_ABOVE)[number] | (typeof ROWS_BELOW)[number];
+
+/** One row of labels of one staff on one system. */
+interface LabelRow {
+  readonly kind: RowKind;
+  readonly staffIndex: number;
+  /**
+   * Sub-row, 0 nearest the staff: dynamic marks sharing an onset (level 0
+   * also holds the hairpins), and scale degrees that would touch, take
+   * successive rows.
+   */
+  readonly level: number;
+}
+
+const rowKey = (row: LabelRow): string => `${row.staffIndex}:${row.kind}:${row.level}`;
+const isAbove = (row: LabelRow): boolean => (ROWS_ABOVE as readonly RowKind[]).includes(row.kind);
+
+/** Vertical ink extent relative to an anchor (a staff's top line, a row's line), in px. */
+interface Extent {
+  readonly top: number;
+  readonly bottom: number;
+}
+
+/** Vertical layout of one system, in its local coordinates. */
+interface SystemVertical {
+  /** y of each staff's top line. */
+  readonly topLines: readonly number[];
+  /** y of each row's line (text baseline; for dynamics, the hairpin center line), by `rowKey`. */
+  readonly rowLines: ReadonlyMap<string, number>;
+}
+
+/**
+ * Stacks one system from measured ink. Each row sits ROW_GAP beyond the ink
+ * of its staff's notation or of the previous row on its side; the rows of a
+ * staff span the whole system, so labels of one kind share a line. Each
+ * staff sits STAFF_GAP below the lowest row of the staff above. `notation`
+ * is the ink of each staff relative to its top line, `rowInk` that of each
+ * row relative to its line (a row without one is not placed).
+ */
+function planVertical(
+  rows: readonly LabelRow[],
+  notation: readonly (Extent | undefined)[],
+  rowInk: ReadonlyMap<string, Extent>,
+): SystemVertical {
+  const topLines: number[] = [];
+  const rowLines = new Map<string, number>();
+  let previousBottom: number | undefined;
+  notation.forEach((ink, staffIndex) => {
+    // Relative to this staff's top line until the staff is placed.
+    let top = Math.min(ink?.top ?? 0, -STAFF_ROOM_ABOVE);
+    let bottom = Math.max(ink?.bottom ?? STAFF_HEIGHT, STAFF_HEIGHT + STAFF_ROOM_BELOW);
+    const lines = new Map<string, number>();
+    for (const row of rows) {
+      const extent = rowInk.get(rowKey(row));
+      if (row.staffIndex !== staffIndex || extent === undefined) {
+        continue;
+      }
+      if (isAbove(row)) {
+        const line = top - ROW_GAP - extent.bottom;
+        lines.set(rowKey(row), line);
+        top = line + extent.top;
+      } else {
+        const line = bottom + ROW_GAP - extent.top;
+        lines.set(rowKey(row), line);
+        bottom = line + extent.bottom;
+      }
+    }
+    const topLine = previousBottom === undefined ? 0 : previousBottom + STAFF_GAP - top;
+    topLines.push(topLine);
+    for (const [key, line] of lines) {
+      rowLines.set(key, topLine + line);
+    }
+    previousBottom = topLine + bottom;
+  });
+  return { topLines, rowLines };
 }
 
 function meterEquals(a: TimeSignature, b: TimeSignature): boolean {
@@ -211,72 +291,37 @@ function beginWidth(
   );
 }
 
-const ABOVE: number = Modifier.Position.ABOVE;
-const BELOW: number = Modifier.Position.BELOW;
+/** How far the ink of a stave's end barline reaches left of the stave's end (a final barline's does). */
+function endBarlineInset(stave: Stave): number {
+  const [barline] = stave.getModifiers(StaveModifierPosition.END, Barline.CATEGORY);
+  return -Math.min(0, barline?.getLayoutMetrics()?.xMin ?? 0);
+}
 
-/** Half a notehead plus clearance, in staff spaces. */
-const NOTEHEAD_CLEARANCE = 0.75;
-/** Room for a slur curve on either side of the notes, in staff spaces. */
-const SLUR_ROOM = 1.5;
+/** x where the ink of a stave's end barline starts. */
+function barlineLeft(stave: Stave): number {
+  return stave.getX() + stave.getWidth() - endBarlineInset(stave);
+}
 
-/** How far a staff's notes and their modifiers reach beyond its lines. */
-function staffExtent(glyphs: BarGlyphs, staffIndex: number, slurred: boolean): StaffExtent {
-  const staff = glyphs.staves[staffIndex];
-  let above = 0;
-  let below = 0;
-  for (const { note } of staff?.events ?? []) {
-    if (note.isRest()) {
-      continue;
-    }
-    const lines = note.getKeyProps().map((props) => props.line);
-    const stemUp = note.getStemDirection() === Stem.UP;
-    let top = Math.max(...lines) + (stemUp ? 3.5 : 0);
-    let bottom = Math.min(...lines) - (stemUp ? 0 : 3.5);
-    for (const modifier of note.getModifiers()) {
-      const category = modifier.getCategory();
-      if (category !== 'Articulation' && category !== 'FretHandFinger') {
-        continue;
-      }
-      const position: number = modifier.getPosition();
-      if (position === ABOVE) {
-        top += 1.5;
-      } else if (position === BELOW) {
-        bottom -= 1.5;
-      }
-    }
-    // VexFlow lines: 1 is the bottom line, 5 the top line.
-    above = Math.max(above, top - 5 + NOTEHEAD_CLEARANCE);
-    below = Math.max(below, 1 - bottom + NOTEHEAD_CLEARANCE);
-  }
-  if (slurred) {
-    above += SLUR_ROOM;
-    below += SLUR_ROOM;
-  }
-  for (const { below: under } of staff?.tuplets ?? []) {
-    if (under) {
-      below += 2;
-    } else {
-      above += 2;
-    }
-  }
-  return { above, below };
+/**
+ * Where a pedal release written at the end of `end` is right-aligned, before
+ * RELEASE_GAP: the next event of its voice (where the "Ped." of a pedal
+ * change starts), else the bar line at `barEnd`.
+ */
+function releaseAnchor(end: StaveNote, barEnd: number): number {
+  const voiceNotes = end.getVoice().getTickables();
+  return voiceNotes[voiceNotes.indexOf(end) + 1]?.getAbsoluteX() ?? barEnd;
 }
 
 function measureBars(prepared: PreparedScore): BarMeasure[] {
   const { score, index } = prepared;
-  const slurredBars = new Set<string>();
-  for (const slur of score.slurs ?? []) {
-    const start = index.location(slur.startNoteId);
-    const end = index.location(slur.endNoteId);
-    for (
-      let barIndex = start?.measureIndex ?? 0;
-      barIndex <= (end?.measureIndex ?? -1);
-      barIndex += 1
-    ) {
-      slurredBars.add(`${start?.staffIndex ?? 0}:${barIndex}`);
-    }
-  }
-  const placeholders = (): Stave[] => score.staves.map(() => new Stave(0, 0, 10_000));
+  const placeholders = (barIndex: number): Stave[] =>
+    score.staves.map(() => {
+      const stave = new Stave(0, 0, 10_000);
+      if (barIndex === index.bars.length - 1) {
+        stave.setEndBarType(BarlineType.END);
+      }
+      return stave;
+    });
   /** Bars where some onset may need room (see `barRoom`): a pedal starts, or a staff has 3+ voices. */
   const roomBars = new Set(
     (score.pedal ?? []).map((pedal) => index.location(pedal.startEventId)?.measureIndex),
@@ -287,18 +332,18 @@ function measureBars(prepared: PreparedScore): BarMeasure[] {
     }
   });
   return index.bars.map((bar, barIndex) => {
-    let glyphs = buildBar(prepared, barIndex, placeholders());
+    const glyphs = buildBar(prepared, barIndex, placeholders(barIndex));
     let content = glyphs.formatter.preCalculateMinTotalWidth([...glyphs.voices]);
     const room = roomBars.has(barIndex)
       ? barRoom(
           prepared,
-          buildBar(prepared, barIndex, placeholders()),
+          buildBar(prepared, barIndex, placeholders(barIndex)),
           content * SPACING_FACTOR + NOTE_ROOM,
         )
       : new Map<string, number>();
     if (room.size > 0) {
-      glyphs = buildBar(prepared, barIndex, placeholders(), room);
-      content = glyphs.formatter.preCalculateMinTotalWidth([...glyphs.voices]);
+      const roomy = buildBar(prepared, barIndex, placeholders(barIndex), room);
+      content = roomy.formatter.preCalculateMinTotalWidth([...roomy.voices]);
     }
     const previous = index.bars[barIndex - 1];
     const showMeter =
@@ -308,18 +353,6 @@ function measureBars(prepared: PreparedScore): BarMeasure[] {
       showMeter,
       beginStart: beginWidth(prepared, barIndex, true, showMeter),
       beginContinued: beginWidth(prepared, barIndex, false, showMeter),
-      extents: score.staves.map((_, staffIndex) =>
-        staffExtent(glyphs, staffIndex, slurredBars.has(`${staffIndex}:${barIndex}`)),
-      ),
-      hasChordSymbols: glyphs.staves.some((staff) => staff.chordSymbols.length > 0),
-      hasRomanNumerals: glyphs.staves.some((staff) => staff.romanNumerals.length > 0),
-      markRows: new Map(
-        glyphs.staves.flatMap((staff) =>
-          staff.dynamics.length > 0
-            ? [[staff.staffIndex, 1 + Math.max(...staff.dynamics.map((mark) => mark.row))]]
-            : [],
-        ),
-      ),
       room,
     };
   });
@@ -328,12 +361,12 @@ function measureBars(prepared: PreparedScore): BarMeasure[] {
 /**
  * Minimum widths some onsets of a bar need beyond what VexFlow reserves, by
  * event, found by formatting a fresh build (`glyphs`) at the bar's natural
- * width (justification only widens it):
+ * width (the room then holds at any wider width, see `buildBar`):
  * - a pedal span too short for its "Ped." and release marks (one or a few
- *   short notes) gets their width after its start event. The release is
- *   right-aligned on the end of the span, as PedalMarking draws it: the next
- *   event of the end event's voice, or the bar end; a span ending in a later
- *   bar needs its room before this bar line;
+ *   short notes) gets their width after its start event. The release ends
+ *   RELEASE_GAP before the end of the span (`releaseAnchor`): the next event
+ *   of the end event's voice, or the bar line; a span ending in a later bar
+ *   needs its room before this bar line;
  * - a glyph moved aside by `separateVoices` gets room up to its new right edge.
  */
 function barRoom(prepared: PreparedScore, glyphs: BarGlyphs, width: number): Map<string, number> {
@@ -348,13 +381,10 @@ function barRoom(prepared: PreparedScore, glyphs: BarGlyphs, width: number): Map
     if (start === undefined) {
       continue;
     }
-    const barEnd = start.checkStave().getNoteStartX() + width + BAR_END_PADDING;
+    const stave = start.checkStave();
+    const barEnd = stave.getNoteStartX() + width + BAR_END_PADDING - endBarlineInset(stave);
     const end = starts.get(pedal.endEventId);
-    let releaseEnd = barEnd;
-    if (end !== undefined) {
-      const voiceNotes = end.getVoice().getTickables();
-      releaseEnd = voiceNotes[voiceNotes.indexOf(end) + 1]?.getAbsoluteX() ?? barEnd;
-    }
+    const releaseEnd = end === undefined ? barEnd : releaseAnchor(end, barEnd);
     if (releaseEnd - start.getAbsoluteX() < need) {
       room.set(pedal.startEventId, Math.max(need, room.get(pedal.startEventId) ?? 0));
     }
@@ -481,77 +511,14 @@ function planSystems(bars: readonly BarMeasure[], available: number): SystemPlan
   });
 }
 
-/** Row placement for one system, from its content (staff spaces) and labels. */
-function planRows(
-  prepared: PreparedScore,
-  plan: SystemPlan,
-  measures: readonly BarMeasure[],
-  needs: {
-    readonly degrees: ReadonlySet<number>;
-    /** Rows of dynamics (marks and hairpins) per staff. */
-    readonly dynamics: ReadonlyMap<number, number>;
-    readonly pedal: ReadonlySet<number>;
-  },
-): SystemRows {
-  const { score } = prepared;
-  const lastStaff = score.staves.length - 1;
-  const bars = plan.bars.map((barIndex) => measures[barIndex] as BarMeasure);
-  const extent = (staffIndex: number): StaffExtent => ({
-    above: Math.max(0, ...bars.map((bar) => bar.extents[staffIndex]?.above ?? 0)),
-    below: Math.max(0, ...bars.map((bar) => bar.extents[staffIndex]?.below ?? 0)),
-  });
-  const hasChords = bars.some((bar) => bar.hasChordSymbols);
-  const hasRoman = bars.some((bar) => bar.hasRomanNumerals);
-  const hasSwing = plan.index === 0 && score.playbackFeel?.type === 'swing';
-
-  // Above the top staff, relative to its top line (negative is higher).
-  let cursor = -Math.max(1.5, extent(0).above) * SPACE;
-  const chordBaseline = cursor - 4;
-  if (hasChords) {
-    cursor = chordBaseline - 14;
-  }
-  const swingBaseline = cursor - 4;
-  if (hasSwing) {
-    cursor = swingBaseline - 14;
-  }
-  let topLine = -cursor;
-  const staves: StaffRows[] = [];
-  score.staves.forEach((_, staffIndex) => {
-    if (staffIndex > 0) {
-      topLine = cursor + STAFF_GAP + Math.max(1.5, extent(staffIndex).above) * SPACE;
-    }
-    cursor = topLine + STAFF_HEIGHT + Math.max(1, extent(staffIndex).below) * SPACE;
-    const degreeBaseline = cursor + 13;
-    if (needs.degrees.has(staffIndex)) {
-      cursor = degreeBaseline + 3;
-    }
-    const dynamicsCenter = cursor + 12;
-    const dynamicRows = needs.dynamics.get(staffIndex) ?? 0;
-    if (dynamicRows > 0) {
-      cursor = dynamicsCenter + 8 + (dynamicRows - 1) * DYNAMIC_ROW;
-    }
-    const pedalBaseline = cursor + 20;
-    if (needs.pedal.has(staffIndex)) {
-      cursor = pedalBaseline + 8;
-    }
-    const romanBaseline = cursor + 15;
-    if (hasRoman && staffIndex === lastStaff) {
-      cursor = romanBaseline + 4;
-    }
-    staves.push({ topLine, degreeBaseline, dynamicsCenter, pedalBaseline, romanBaseline });
-  });
-  return {
-    staves,
-    chordBaseline: chordBaseline + topLineOf(staves),
-    swingBaseline: swingBaseline + topLineOf(staves),
-  };
+/** Line for VexFlow text notes (TextNote, TextDynamics), drawn at `stave.getYForLine(line - 3)`. */
+function textNoteLine(baseline: number, stave: Stave): number {
+  return (baseline - stave.getYForLine(0)) / SPACE + 3;
 }
 
-const topLineOf = (staves: readonly StaffRows[]): number => staves[0]?.topLine ?? 0;
-
-/** Line for VexFlow text notes, which draw at `stave.getYForLine(line - 3)`. */
-function textNoteLine(baseline: number, topLine: number): number {
-  return (baseline - topLine) / SPACE + 3;
+/** Line for a PedalMarking, whose text is drawn at `stave.getYForBottomText(line + 3)`. */
+function pedalLine(baseline: number, stave: Stave): number {
+  return (baseline - stave.getYForBottomText(0)) / SPACE - 3;
 }
 
 type TextMeasurer = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -598,6 +565,11 @@ function inkBounds(root: SVGGElement, measurer: TextMeasurer): Box | undefined {
   return box;
 }
 
+function verticalInk(root: SVGGElement, measurer: TextMeasurer): Extent | undefined {
+  const box = inkBounds(root, measurer);
+  return box === undefined ? undefined : { top: box.y, bottom: box.y + box.height };
+}
+
 function boxOf(note: StaveNote, index: number): Box {
   const head = note.noteHeads[index];
   if (head === undefined) {
@@ -634,11 +606,45 @@ function openLabelGroup(
   }
 }
 
-interface EventPlacement {
-  readonly note: StaveNote;
-  readonly staffIndex: number;
-  readonly system: number;
-  readonly onset: Fraction;
+/** One bar of a system, built on its staves (one per ScoreSpec staff). */
+interface BuiltBar {
+  readonly glyphs: BarGlyphs;
+  readonly staves: readonly Stave[];
+}
+
+/** A system built and formatted on its staves, ready to draw. */
+interface BuiltSystem {
+  readonly plan: SystemPlan;
+  readonly bars: readonly BuiltBar[];
+  /** The system's events, by ID. */
+  readonly events: ReadonlyMap<string, StaveNote>;
+  /** The system's events of each staff, by onset. */
+  readonly staffEvents: readonly (readonly StaveNote[])[];
+  /** The system's written notes, by ID. */
+  readonly notes: ReadonlyMap<string, NoteGlyph>;
+  /**
+   * The sub-row of each scale degree of the system, by label ID (see
+   * `degreeRowsOf`). Call it once the notes are drawn: VexFlow sets a
+   * notehead's box when it draws it.
+   */
+  readonly degreeRows: () => ReadonlyMap<string, number>;
+}
+
+/**
+ * The events a span is drawn between on one system: its own ends on the
+ * systems that hold them, the system's edge events of its staff otherwise.
+ */
+function spanEnds(
+  item: Span,
+  built: BuiltSystem,
+  start: StaveNote | undefined,
+  end: StaveNote | undefined,
+): { readonly from: StaveNote; readonly to: StaveNote } | undefined {
+  const edge = built.staffEvents[item.staffIndex] ?? [];
+  const system = built.plan.index;
+  const from = system === item.startSystem ? start : edge[0];
+  const to = system === item.endSystem ? end : edge[edge.length - 1];
+  return from === undefined || to === undefined ? undefined : { from, to };
 }
 
 /**
@@ -692,6 +698,7 @@ export function engrave(
   }));
   const touches = (item: Span, system: number): boolean =>
     item.startSystem <= system && system <= item.endSystem;
+  const swing = score.playbackFeel?.type === 'swing' ? score.playbackFeel : undefined;
 
   const ctx = new SVGContext(container);
   const svg = ctx.svg;
@@ -702,51 +709,67 @@ export function engrave(
   ctx.setFillStyle(ink);
   ctx.setStrokeStyle(ink);
 
-  // Build and format every system on its final staves.
-  const events = new Map<string, EventPlacement>();
-  const noteGlyphs = new Map<string, NoteGlyph & { readonly system: number }>();
-  const systems = plans.map((plan) => {
-    const needs = {
-      degrees: new Set<number>(),
-      dynamics: new Map<number, number>(),
-      pedal: new Set<number>(),
-    };
-    const needDynamics = (staffIndex: number, rows: number): void => {
-      needs.dynamics.set(staffIndex, Math.max(rows, needs.dynamics.get(staffIndex) ?? 0));
-    };
-    for (const barIndex of plan.bars) {
-      for (const [staffIndex, rows] of measures[barIndex]?.markRows ?? []) {
-        needDynamics(staffIndex, rows);
+  const degreeWidth = (text: string): number => {
+    ctx.save();
+    ctx.setFont(LABEL_FONT, DEGREE_FONT_SIZE);
+    const { width } = ctx.measureText(text);
+    ctx.restore();
+    return width;
+  };
+
+  /**
+   * The sub-row of each scale degree of a system (labels are centered under
+   * their notehead): left to right, a label takes the first row of its staff,
+   * 0 nearest the staff, where it clears by DEGREE_GAP the labels placed on
+   * it before. At one onset the top note comes first, so labels sounding
+   * together (a chord's members, voices of one staff) stack in the order of
+   * their notes, the top note's nearest the staff.
+   */
+  const degreeRowsOf = (notes: ReadonlyMap<string, NoteGlyph>): Map<string, number> => {
+    const labels = (score.scaleDegrees ?? []).flatMap((label) => {
+      const glyph = notes.get(label.noteId);
+      if (glyph === undefined) {
+        return [];
       }
+      const head = boxOf(glyph.note, glyph.index);
+      const half = degreeWidth(scaleDegreeText(label)) / 2;
+      return [
+        {
+          id: label.id,
+          staffIndex: glyph.staffIndex,
+          onsetX: glyph.note.getAbsoluteX(),
+          line: glyph.note.getKeyProps()[glyph.index]?.line ?? 0,
+          left: head.x + head.width / 2 - half,
+          right: head.x + head.width / 2 + half,
+        },
+      ];
+    });
+    labels.sort((a, b) => a.staffIndex - b.staffIndex || a.onsetX - b.onsetX || b.line - a.line);
+    const rows = new Map<string, number>();
+    const rowEnds = new Map<number, number[]>();
+    for (const label of labels) {
+      const ends = rowEnds.get(label.staffIndex) ?? [];
+      const free = ends.findIndex((end) => end + DEGREE_GAP <= label.left);
+      const row = free < 0 ? ends.length : free;
+      ends[row] = label.right;
+      rowEnds.set(label.staffIndex, ends);
+      rows.set(label.id, row);
     }
-    for (const label of score.scaleDegrees ?? []) {
-      if (systemOf(label.noteId) === plan.index) {
-        needs.degrees.add(staffOf(label.noteId));
-      }
-    }
-    for (const hairpin of hairpins) {
-      if (touches(hairpin, plan.index)) {
-        needDynamics(hairpin.staffIndex, 1);
-      }
-    }
-    for (const pedal of pedals) {
-      // Pedal marks sit on the systems where the span starts ("Ped.") and ends (release).
-      if (plan.index === pedal.startSystem || plan.index === pedal.endSystem) {
-        needs.pedal.add(pedal.staffIndex);
-      }
-    }
-    const rows = planRows(prepared, plan, measures, needs);
+    return rows;
+  };
+
+  /** Builds and formats a system on staves whose top lines are at `topLines` (local y). */
+  const buildSystem = (plan: SystemPlan, topLines: readonly number[]): BuiltSystem => {
+    let degreeRows: Map<string, number> | undefined;
     let x = leftEdge;
-    const bars = plan.bars.map((barIndex, position) => {
+    const systemEvents: EventGlyph[] = [];
+    const notes = new Map<string, NoteGlyph>();
+    const bars = plan.bars.map((barIndex, position): BuiltBar => {
       const barWidth = plan.barWidths[position] ?? 0;
       const meter =
         measures[barIndex]?.showMeter === true ? index.bars[barIndex]?.timeSignature : undefined;
       const staves = score.staves.map((_, staffIndex) => {
-        const stave = new Stave(
-          x,
-          (rows.staves[staffIndex]?.topLine ?? 0) - STAVE_HEADROOM,
-          barWidth,
-        );
+        const stave = new Stave(x, (topLines[staffIndex] ?? 0) - STAVE_HEADROOM, barWidth);
         decorateStave(stave, score, staffIndex, position === 0, meter);
         if (barIndex === index.bars.length - 1) {
           stave.setEndBarType(BarlineType.END);
@@ -762,97 +785,359 @@ export function engrave(
       const justify = (staves[0]?.getNoteEndX() ?? noteStartX) - noteStartX - BAR_END_PADDING;
       glyphs.formatter.format([...glyphs.voices], justify);
       separateVoices(glyphs);
-      for (const staff of glyphs.staves) {
-        for (const event of staff.events) {
-          events.set(event.eventId, {
-            note: event.note,
-            staffIndex: event.staffIndex,
-            system: plan.index,
-            onset: event.onset,
-          });
-        }
-      }
+      systemEvents.push(...glyphs.staves.flatMap((staff) => staff.events));
       for (const glyph of glyphs.notes) {
-        noteGlyphs.set(glyph.noteId, { ...glyph, system: plan.index });
+        notes.set(glyph.noteId, glyph);
       }
       x += barWidth;
       return { glyphs, staves };
     });
-    return { plan, rows, bars };
-  });
-
-  /** Events of one staff on one system, by onset. */
-  const systemEvents = (system: number, staffIndex: number): StaveNote[] =>
-    [...events.values()]
-      .filter((event) => event.system === system && event.staffIndex === staffIndex)
-      .sort((a, b) => compareFractions(a.onset, b.onset))
-      .map((event) => event.note);
-  /** The part of a span drawn on `system`, from its own ends or the system's edge events. */
-  const segment = (
-    item: Span,
-    system: number,
-    from: StaveNote,
-    to: StaveNote,
-  ): { from: StaveNote; to: StaveNote } => {
-    const edge = systemEvents(system, item.staffIndex);
     return {
-      from: system === item.startSystem ? from : (edge[0] ?? from),
-      to: system === item.endSystem ? to : (edge[edge.length - 1] ?? to),
+      plan,
+      bars,
+      events: new Map(systemEvents.map((event) => [event.eventId, event.note])),
+      staffEvents: score.staves.map((_, staffIndex) =>
+        systemEvents
+          .filter((event) => event.staffIndex === staffIndex)
+          .sort((a, b) => compareFractions(a.onset, b.onset))
+          .map((event) => event.note),
+      ),
+      notes,
+      degreeRows: () => (degreeRows ??= degreeRowsOf(notes)),
     };
   };
-  const eventNote = (id: string): StaveNote | undefined => events.get(id)?.note;
-  const noteOf = (noteId: string): StaveNote | undefined => noteGlyphs.get(noteId)?.note;
 
   /**
    * Each hairpin's part on every system it crosses, left to right: from its
    * start event (after a mark on it) or the system's first event, to the end
-   * of its end event or of the system.
+   * of its end event (before the next event, a mark written right after it
+   * and the bar line) or of the system.
    */
-  const hairpinParts = new Map(
-    hairpins.map((hairpin) => {
-      const start = eventNote(hairpin.startEventId);
-      const end = eventNote(hairpin.endEventId);
-      const parts: HairpinPart[] = [];
-      for (let system = hairpin.startSystem; system <= hairpin.endSystem; system += 1) {
-        if (start === undefined || end === undefined || system < 0) {
-          break;
+  const hairpinParts = (built: readonly BuiltSystem[]): Map<string, OpenedPart[]> =>
+    new Map(
+      hairpins.map((hairpin) => {
+        const parts: HairpinPart[] = [];
+        for (let system = hairpin.startSystem; system <= hairpin.endSystem; system += 1) {
+          const on = built[system];
+          const ends =
+            on === undefined
+              ? undefined
+              : spanEnds(
+                  hairpin,
+                  on,
+                  on.events.get(hairpin.startEventId),
+                  on.events.get(hairpin.endEventId),
+                );
+          if (on === undefined || ends === undefined) {
+            break;
+          }
+          const { from, to } = ends;
+          const nextOnStaff = (on.staffEvents[hairpin.staffIndex] ?? []).find(
+            (candidate) => candidate.getAbsoluteX() > to.getAbsoluteX() + 1,
+          );
+          const endX =
+            Math.min(nextOnStaff?.getAbsoluteX() ?? Infinity, barlineLeft(to.checkStave())) -
+            HAIRPIN_END_GAP;
+          // A hairpin starting on a dynamic mark starts after it.
+          const markWidth =
+            system === hairpin.startSystem
+              ? markLabelWidth(on.bars, hairpin.startEventId, prepared)
+              : 0;
+          const x0 = from.getAbsoluteX() + (markWidth > 0 ? markWidth + HAIRPIN_MARK_GAP : 0);
+          // One ending before a dynamic mark (the common "< f") stops short of the mark's ink.
+          const markLeft = nextMarkLeft(on.bars, hairpin.staffIndex, to.getAbsoluteX());
+          const x1 = Math.min(
+            Math.max(to.getModifierStartXY(Modifier.Position.BELOW, 0).x, endX),
+            markLeft - HAIRPIN_MARK_GAP,
+          );
+          // Never shorter than it is open, nor reversed.
+          parts.push({ system, x0, x1: Math.max(x1, x0 + HAIRPIN_HEIGHT) });
         }
-        const { from, to } = segment(hairpin, system, start, end);
-        const nextOnStaff = systemEvents(system, hairpin.staffIndex).find(
-          (candidate) => candidate.getAbsoluteX() > to.getAbsoluteX() + 1,
-        );
-        const endX =
-          Math.min(nextOnStaff?.getAbsoluteX() ?? Infinity, to.checkStave().getNoteEndX()) - 6;
-        // A hairpin starting on a dynamic mark starts after it.
-        const markWidth =
-          system === hairpin.startSystem
-            ? markLabelWidth(systems[system]?.bars ?? [], hairpin.startEventId, prepared)
-            : 0;
-        parts.push({
-          system,
-          x0: from.getAbsoluteX() + (markWidth > 0 ? markWidth + 6 : 0),
-          x1: Math.max(to.getModifierStartXY(Modifier.Position.BELOW, 0).x, endX),
-        });
+        return [hairpin.id, openings(parts, hairpin.direction)];
+      }),
+    );
+
+  /** The label rows a system has, each staff's in order outward (see ROWS_ABOVE, ROWS_BELOW). */
+  const rowsOf = (built: BuiltSystem): LabelRow[] => {
+    const system = built.plan.index;
+    return score.staves.flatMap((_, staffIndex): LabelRow[] => {
+      const staffBars = built.bars.flatMap(({ glyphs }) => glyphs.staves[staffIndex] ?? []);
+      const present: Readonly<Record<RowKind, number>> = {
+        'chord-symbols': staffBars.some((staff) => staff.chordSymbols.length > 0) ? 1 : 0,
+        swing: staffIndex === 0 && system === 0 && swing !== undefined ? 1 : 0,
+        // One row per sub-row of scale degrees (see `degreeRowsOf`).
+        'scale-degrees': Math.max(
+          0,
+          ...(score.scaleDegrees ?? []).flatMap((label) =>
+            built.notes.get(label.noteId)?.staffIndex === staffIndex
+              ? [(built.degreeRows().get(label.id) ?? 0) + 1]
+              : [],
+          ),
+        ),
+        // One row per level of dynamic marks; level 0 also holds the hairpins.
+        dynamics: Math.max(
+          0,
+          ...staffBars.flatMap((staff) => staff.dynamics.map((mark) => mark.row + 1)),
+          hairpins.some((item) => item.staffIndex === staffIndex && touches(item, system)) ? 1 : 0,
+        ),
+        // Pedal marks sit on the systems where a span starts ("Ped.") and ends (release).
+        pedal: pedals.some(
+          (item) =>
+            item.staffIndex === staffIndex &&
+            (item.startSystem === system || item.endSystem === system),
+        )
+          ? 1
+          : 0,
+        'roman-numerals': staffBars.some((staff) => staff.romanNumerals.length > 0) ? 1 : 0,
+      };
+      return [...ROWS_ABOVE, ...ROWS_BELOW].flatMap((kind) =>
+        Array.from({ length: present[kind] }, (_, level) => ({ kind, staffIndex, level })),
+      );
+    });
+  };
+
+  /** Draws one staff of a system: staves, notes and their modifiers, beams, tuplets, ties, slurs. */
+  const drawNotation = (built: BuiltSystem, staffIndex: number): void => {
+    for (const { glyphs, staves } of built.bars) {
+      staves[staffIndex]?.setContext(ctx).draw();
+      const staff = glyphs.staves[staffIndex];
+      if (staff === undefined) {
+        continue;
       }
-      return [hairpin.id, openings(parts, hairpin.direction)];
-    }),
-  );
-
-  const measurer = textMeasurer();
-  const noteheads = new Map<string, SVGElement>();
-  const noteBoxes = new Map<string, Box>();
-  const drawn = systems.map(({ plan, rows, bars }) => {
-    const group = ctx.openGroup('system');
-    group.setAttribute('data-system-index', String(plan.index));
-    const annotated = new Set<string>();
-
-    for (const { staves } of bars) {
-      for (const stave of staves) {
-        stave.setContext(ctx).draw();
+      for (const event of staff.events) {
+        event.note.setStemStyle({ strokeStyle: ink, fillStyle: ink });
+      }
+      for (const voice of staff.musicVoices) {
+        voice.draw(ctx, staff.stave);
+      }
+      for (const beam of staff.beams) {
+        beam.setContext(ctx).draw();
+      }
+      for (const { tuplet } of staff.tuplets) {
+        tuplet.setContext(ctx).draw();
       }
     }
+
+    // A tie split by a system break is drawn on both systems, from or to the edge.
+    for (const tie of index.ties) {
+      const from = built.notes.get(tie.from.id);
+      const to = built.notes.get(tie.to.id);
+      if ((from ?? to)?.staffIndex !== staffIndex) {
+        continue;
+      }
+      const notes =
+        from !== undefined && to !== undefined
+          ? {
+              firstNote: from.note,
+              lastNote: to.note,
+              firstIndexes: [from.index],
+              lastIndexes: [to.index],
+            }
+          : from !== undefined
+            ? { firstNote: from.note, firstIndexes: [from.index], lastIndexes: [from.index] }
+            : to !== undefined
+              ? { lastNote: to.note, firstIndexes: [to.index], lastIndexes: [to.index] }
+              : undefined;
+      if (notes === undefined) {
+        continue;
+      }
+      openLabelGroup(ctx, 'tie', { 'tie-from': tie.from.id, 'tie-to': tie.to.id });
+      new StaveTie(notes).setContext(ctx).draw();
+      ctx.closeGroup();
+    }
+
+    for (const slur of slurs) {
+      if (slur.staffIndex !== staffIndex || !touches(slur, built.plan.index)) {
+        continue;
+      }
+      const ends = spanEnds(
+        slur,
+        built,
+        built.notes.get(slur.startNoteId)?.note,
+        built.notes.get(slur.endNoteId)?.note,
+      );
+      if (ends === undefined) {
+        continue;
+      }
+      openLabelGroup(ctx, 'slur', { 'slur-id': slur.id });
+      new Curve(ends.from, ends.to, {}).setContext(ctx).draw();
+      ctx.closeGroup();
+    }
+  };
+
+  /** Draws one label row of a system on its line (see `SystemVertical.rowLines`). */
+  const drawRow = (
+    built: BuiltSystem,
+    row: LabelRow,
+    line: number,
+    parts: ReadonlyMap<string, readonly OpenedPart[]>,
+  ): void => {
+    const { staffIndex } = row;
+    const staffBars = built.bars.flatMap(({ glyphs }) => glyphs.staves[staffIndex] ?? []);
+    switch (row.kind) {
+      case 'chord-symbols':
+        for (const { id, note } of staffBars.flatMap((staff) => staff.chordSymbols)) {
+          openLabelGroup(ctx, 'chord-symbol', { 'harmony-id': id });
+          note.setLine(textNoteLine(line, note.checkStave())).setContext(ctx).draw();
+          ctx.closeGroup();
+        }
+        return;
+      case 'roman-numerals':
+        for (const { id, note } of staffBars.flatMap((staff) => staff.romanNumerals)) {
+          openLabelGroup(ctx, 'roman-numeral', { 'harmony-id': id });
+          note.setLine(textNoteLine(line, note.checkStave())).setContext(ctx).draw();
+          ctx.closeGroup();
+        }
+        return;
+      case 'dynamics':
+        for (const { id, note, row: level } of staffBars.flatMap((staff) => staff.dynamics)) {
+          if (level !== row.level) {
+            continue;
+          }
+          openLabelGroup(ctx, 'dynamic', { 'dynamic-id': id });
+          note
+            .setLine(textNoteLine(line + MARK_BASELINE, note.checkStave()))
+            .setContext(ctx)
+            .draw();
+          ctx.closeGroup();
+        }
+        if (row.level > 0) {
+          return;
+        }
+        for (const hairpin of hairpins) {
+          const part = parts.get(hairpin.id)?.find((item) => item.system === built.plan.index);
+          if (hairpin.staffIndex !== staffIndex || part === undefined) {
+            continue;
+          }
+          openLabelGroup(ctx, 'hairpin', { 'dynamic-id': hairpin.id });
+          drawWedge(ctx, part, line, ink);
+          ctx.closeGroup();
+        }
+        return;
+      case 'pedal':
+        for (const pedal of pedals) {
+          const depress = built.plan.index === pedal.startSystem;
+          const release = built.plan.index === pedal.endSystem;
+          // A system the pedal only crosses: nothing is written, the pedal stays down.
+          const ends =
+            pedal.staffIndex === staffIndex && (depress || release)
+              ? spanEnds(
+                  pedal,
+                  built,
+                  built.events.get(pedal.startEventId),
+                  built.events.get(pedal.endEventId),
+                )
+              : undefined;
+          if (ends === undefined) {
+            continue;
+          }
+          openLabelGroup(ctx, 'pedal', { 'pedal-id': pedal.id });
+          const marking = new PedalPart(ends.from, ends.to, depress, release);
+          marking.setLine(pedalLine(line, ends.from.checkStave()));
+          marking.renderOptions.color = ink;
+          marking.setContext(ctx).draw();
+          ctx.closeGroup();
+        }
+        return;
+      case 'scale-degrees':
+        for (const label of score.scaleDegrees ?? []) {
+          const glyph = built.notes.get(label.noteId);
+          if (
+            glyph?.staffIndex !== staffIndex ||
+            (built.degreeRows().get(label.id) ?? 0) !== row.level
+          ) {
+            continue;
+          }
+          const box = boxOf(glyph.note, glyph.index);
+          const text = scaleDegreeText(label);
+          openLabelGroup(ctx, 'scale-degree', {
+            'scale-degree-id': label.id,
+            'note-id': label.noteId,
+          });
+          ctx.setFont(LABEL_FONT, DEGREE_FONT_SIZE);
+          const textWidth = ctx.measureText(text).width;
+          ctx.fillText(text, box.x + box.width / 2 - textWidth / 2, line);
+          ctx.closeGroup();
+        }
+        return;
+      case 'swing':
+        openLabelGroup(ctx, 'swing', {});
+        ctx.setFont(LABEL_FONT, SWING_FONT_SIZE, 'bold');
+        ctx.fillText(
+          swing?.displayText ?? 'Swing',
+          built.bars[0]?.staves[0]?.getX() ?? leftEdge,
+          line,
+        );
+        ctx.closeGroup();
+        return;
+    }
+  };
+
+  const measurer = textMeasurer();
+
+  // Measure: every system on provisional staves (top lines at 0), each
+  // staff's notation and each row (on line 0) drawn in a scratch group of its
+  // own, then measured together once everything is drawn.
+  const provisionalLines = score.staves.map(() => 0);
+  const provisional = plans.map((plan) => buildSystem(plan, provisionalLines));
+  const provisionalParts = hairpinParts(provisional);
+  const scratch = ctx.openGroup('measure');
+  const probes = provisional.map((built) => {
+    const probe = (draw: () => void): SVGGElement => {
+      const group = ctx.openGroup('probe');
+      draw();
+      ctx.closeGroup();
+      return group;
+    };
+    const notation = score.staves.map((_, staffIndex) =>
+      probe(() => {
+        drawNotation(built, staffIndex);
+      }),
+    );
+    // After the notes are drawn (see `BuiltSystem.degreeRows`).
+    const rows = rowsOf(built);
+    return {
+      rows,
+      notation,
+      rowProbes: rows.map(
+        (row) =>
+          [
+            rowKey(row),
+            probe(() => {
+              drawRow(built, row, 0, provisionalParts);
+            }),
+          ] as const,
+      ),
+    };
+  });
+  ctx.closeGroup();
+  const layouts = probes.map(({ rows, notation, rowProbes }) => {
+    // A row whose ink cannot be measured (only zero-size shapes) still gets its line.
+    const rowInk = new Map<string, Extent>(
+      rowProbes.map(([key, group]) => [key, verticalInk(group, measurer) ?? { top: 0, bottom: 0 }]),
+    );
+    const notationInk = notation.map((group) => verticalInk(group, measurer));
+    return { rows, vertical: planVertical(rows, notationInk, rowInk) };
+  });
+  scratch.remove();
+
+  // Build and draw every system on its final staves, rows on their lines.
+  const built = plans.map((plan, position) =>
+    buildSystem(plan, layouts[position]?.vertical.topLines ?? provisionalLines),
+  );
+  const parts = hairpinParts(built);
+  const noteheads = new Map<string, SVGElement>();
+  const drawn = built.map((system, position) => {
+    const { plan, bars } = system;
+    const layout = layouts[position];
+    const group = ctx.openGroup('system');
+    group.setAttribute('data-system-index', String(plan.index));
+
+    score.staves.forEach((_, staffIndex) => {
+      drawNotation(system, staffIndex);
+    });
     if (grandStaff) {
-      bars.forEach(({ staves }, position) => {
+      bars.forEach(({ glyphs, staves }, barPosition) => {
         const top = staves[0];
         const bottom = staves[staves.length - 1];
         if (top === undefined || bottom === undefined) {
@@ -863,60 +1148,22 @@ export function engrave(
         ): void => {
           new StaveConnector(top, bottom).setType(type).setContext(ctx).draw();
         };
-        if (position === 0) {
+        if (barPosition === 0) {
           connect('brace');
           connect('singleLeft');
         }
-        connect(
-          bars[position]?.glyphs.barIndex === index.bars.length - 1
-            ? 'boldDoubleRight'
-            : 'singleRight',
-        );
+        connect(glyphs.barIndex === index.bars.length - 1 ? 'boldDoubleRight' : 'singleRight');
       });
     }
-
-    for (const { glyphs } of bars) {
-      for (const staff of glyphs.staves) {
-        const staffRows = rows.staves[staff.staffIndex];
-        for (const event of staff.events) {
-          event.note.setStemStyle({ strokeStyle: ink, fillStyle: ink });
-        }
-        for (const voice of staff.musicVoices) {
-          voice.draw(ctx, staff.stave);
-        }
-        for (const beam of staff.beams) {
-          beam.setContext(ctx).draw();
-        }
-        for (const { tuplet } of staff.tuplets) {
-          tuplet.setContext(ctx).draw();
-        }
-        const topLine = staffRows?.topLine ?? 0;
-        for (const { id, note } of staff.chordSymbols) {
-          openLabelGroup(ctx, 'chord-symbol', { 'harmony-id': id });
-          note.setLine(textNoteLine(rows.chordBaseline, topLine)).setContext(ctx).draw();
-          ctx.closeGroup();
-        }
-        for (const { id, note } of staff.romanNumerals) {
-          openLabelGroup(ctx, 'roman-numeral', { 'harmony-id': id });
-          note
-            .setLine(textNoteLine(staffRows?.romanBaseline ?? 0, topLine))
-            .setContext(ctx)
-            .draw();
-          ctx.closeGroup();
-        }
-        for (const { id, note, row } of staff.dynamics) {
-          openLabelGroup(ctx, 'dynamic', { 'dynamic-id': id });
-          note
-            .setLine(
-              textNoteLine((staffRows?.dynamicsCenter ?? 0) + 6 + row * DYNAMIC_ROW, topLine),
-            )
-            .setContext(ctx)
-            .draw();
-          ctx.closeGroup();
-        }
+    for (const row of layout?.rows ?? []) {
+      const line = layout?.vertical.rowLines.get(rowKey(row));
+      if (line !== undefined) {
+        drawRow(system, row, line, parts);
       }
     }
+
     const drawnGroups = groupsById(group);
+    const notes: { readonly glyph: NoteGlyph; readonly box: Box }[] = [];
     for (const { glyphs } of bars) {
       for (const glyph of glyphs.notes) {
         const head = glyph.note.noteHeads[glyph.index];
@@ -930,113 +1177,11 @@ export function engrave(
         }
         headGroup.setAttribute('data-note-id', glyph.noteId);
         noteheads.set(glyph.noteId, glyphText);
-        noteBoxes.set(glyph.noteId, boxOf(glyph.note, glyph.index));
-        if (prepared.colors.has(glyph.noteId)) {
-          annotated.add(glyph.noteId);
-        }
+        notes.push({ glyph, box: boxOf(glyph.note, glyph.index) });
       }
     }
-
-    for (const tie of index.ties) {
-      const from = noteGlyphs.get(tie.from.id);
-      const to = noteGlyphs.get(tie.to.id);
-      if (
-        from === undefined ||
-        to === undefined ||
-        (from.system !== plan.index && to.system !== plan.index)
-      ) {
-        continue;
-      }
-      openLabelGroup(ctx, 'tie', { 'tie-from': tie.from.id, 'tie-to': tie.to.id });
-      const notes =
-        from.system === to.system
-          ? {
-              firstNote: from.note,
-              lastNote: to.note,
-              firstIndexes: [from.index],
-              lastIndexes: [to.index],
-            }
-          : from.system === plan.index
-            ? { firstNote: from.note, firstIndexes: [from.index], lastIndexes: [from.index] }
-            : { lastNote: to.note, firstIndexes: [to.index], lastIndexes: [to.index] };
-      new StaveTie(notes).setContext(ctx).draw();
-      ctx.closeGroup();
-    }
-
-    for (const slur of slurs) {
-      const start = noteOf(slur.startNoteId);
-      const end = noteOf(slur.endNoteId);
-      if (start === undefined || end === undefined || !touches(slur, plan.index)) {
-        continue;
-      }
-      const { from, to } = segment(slur, plan.index, start, end);
-      openLabelGroup(ctx, 'slur', { 'slur-id': slur.id });
-      new Curve(from, to, {}).setContext(ctx).draw();
-      ctx.closeGroup();
-    }
-
-    for (const hairpin of hairpins) {
-      const part = hairpinParts.get(hairpin.id)?.find((item) => item.system === plan.index);
-      const staffRows = rows.staves[hairpin.staffIndex];
-      if (part === undefined || staffRows === undefined) {
-        continue;
-      }
-      openLabelGroup(ctx, 'hairpin', { 'dynamic-id': hairpin.id });
-      drawWedge(ctx, part, staffRows.dynamicsCenter, ink);
-      ctx.closeGroup();
-    }
-
-    for (const pedal of pedals) {
-      const start = eventNote(pedal.startEventId);
-      const end = eventNote(pedal.endEventId);
-      const staffRows = rows.staves[pedal.staffIndex];
-      const depress = plan.index === pedal.startSystem;
-      const release = plan.index === pedal.endSystem;
-      if (start === undefined || end === undefined || staffRows === undefined) {
-        continue;
-      }
-      if (!depress && !release) {
-        // A system the pedal only crosses: nothing is written, the pedal stays down.
-        continue;
-      }
-      const { from, to } = segment(pedal, plan.index, start, end);
-      const topLine = from.checkStave().getYForLine(0);
-      openLabelGroup(ctx, 'pedal', { 'pedal-id': pedal.id });
-      const marking = new PedalPart(from, to, depress, release);
-      marking.setLine((staffRows.pedalBaseline - topLine) / SPACE - 7);
-      marking.renderOptions.color = ink;
-      marking.setContext(ctx).draw();
-      ctx.closeGroup();
-    }
-
-    for (const label of score.scaleDegrees ?? []) {
-      const glyph = noteGlyphs.get(label.noteId);
-      const box = noteBoxes.get(label.noteId);
-      const staffRows = glyph === undefined ? undefined : rows.staves[glyph.staffIndex];
-      if (glyph?.system !== plan.index || box === undefined || staffRows === undefined) {
-        continue;
-      }
-      const text = scaleDegreeText(label);
-      openLabelGroup(ctx, 'scale-degree', { 'scale-degree-id': label.id, 'note-id': label.noteId });
-      ctx.setFont(LABEL_FONT, DEGREE_FONT_SIZE);
-      const textWidth = ctx.measureText(text).width;
-      ctx.fillText(text, box.x + box.width / 2 - textWidth / 2, staffRows.degreeBaseline);
-      ctx.closeGroup();
-    }
-
-    if (plan.index === 0 && score.playbackFeel?.type === 'swing') {
-      const firstStave = bars[0]?.staves[0];
-      openLabelGroup(ctx, 'swing', {});
-      ctx.setFont(LABEL_FONT, SWING_FONT_SIZE, 'bold');
-      ctx.fillText(
-        score.playbackFeel.displayText ?? 'Swing',
-        firstStave?.getX() ?? leftEdge,
-        rows.swingBaseline,
-      );
-      ctx.closeGroup();
-    }
-
     ctx.closeGroup();
+
     const firstStaves = bars[0]?.staves ?? [];
     const lastStaves = bars[bars.length - 1]?.staves ?? [];
     const stavesBox = (staffIndex: number): Box => {
@@ -1060,8 +1205,9 @@ export function engrave(
       plan,
       group,
       staffBoxes,
+      notes,
       ink: inkBounds(group, measurer) ?? allStaves ?? { x: leftEdge, y: 0, width: 0, height: 0 },
-      annotated: annotated.size > 0,
+      annotated: notes.some(({ glyph }) => prepared.colors.has(glyph.noteId)),
     };
   });
 
@@ -1093,13 +1239,9 @@ export function engrave(
       bounds: translated(system.ink, dy),
       annotationBand: { x: stavesX, y: top - band, width: Math.max(0, stavesWidth), height: band },
     });
-    for (const [noteId, glyph] of noteGlyphs) {
-      const box = noteBoxes.get(noteId);
-      if (glyph.system !== system.plan.index || box === undefined) {
-        continue;
-      }
-      notes.set(noteId, {
-        noteId,
+    for (const { glyph, box } of system.notes) {
+      notes.set(glyph.noteId, {
+        noteId: glyph.noteId,
         systemId,
         staffId: score.staves[glyph.staffIndex]?.id ?? '',
         measureId: glyph.measureId,
@@ -1185,14 +1327,15 @@ function drawWedge(ctx: SVGContext, part: OpenedPart, center: number, ink: strin
 }
 
 /**
- * A pedal span's marks on one system: "Ped." on the system where it starts,
- * the release (at the end of its end event) on the system where it ends.
+ * A pedal span's marks on one system: "Ped." at its start event on the system
+ * where it starts, the release on the system where it ends, ending
+ * RELEASE_GAP before the next event of the end event's voice or the bar line
+ * (PedalMarking would end it on them, touching the "Ped." of a pedal change).
  */
 class PedalPart extends PedalMarking {
   constructor(from: StaveNote, to: StaveNote, depress: boolean, release: boolean) {
     super([from, to]);
     this.setType(PedalMarking.type.TEXT);
-    // PedalMarking writes nothing for an empty text.
     if (!depress) {
       this.depressText = '';
     }
@@ -1200,6 +1343,41 @@ class PedalPart extends PedalMarking {
       this.releaseText = '';
     }
   }
+
+  override drawText(): void {
+    const ctx = this.checkContext();
+    const [from, to] = this.notes;
+    if (from !== undefined && this.depressText !== '') {
+      const y = from.checkStave().getYForBottomText(this.line + 3);
+      ctx.fillText(this.depressText, from.getAbsoluteX(), y);
+    }
+    if (to !== undefined && this.releaseText !== '') {
+      const stave = to.checkStave();
+      const right = releaseAnchor(to, barlineLeft(stave)) - RELEASE_GAP;
+      const width = ctx.measureText(this.releaseText).width;
+      ctx.fillText(this.releaseText, right - width, stave.getYForBottomText(this.line + 3));
+    }
+  }
+}
+
+/**
+ * Left edge of the ink of the first dynamic mark of the row hairpins share
+ * (level 0) on a staff after `x`, or Infinity.
+ */
+function nextMarkLeft(
+  bars: readonly { readonly glyphs: BarGlyphs }[],
+  staffIndex: number,
+  x: number,
+): number {
+  let left = Number.POSITIVE_INFINITY;
+  for (const { glyphs } of bars) {
+    for (const { note, row } of glyphs.staves[staffIndex]?.dynamics ?? []) {
+      if (row === 0 && note.getAbsoluteX() > x + 1) {
+        left = Math.min(left, note.getAbsoluteX() - note.getTextMetrics().actualBoundingBoxLeft);
+      }
+    }
+  }
+  return left;
 }
 
 function markLabelWidth(
