@@ -1,5 +1,7 @@
+import { Button } from '@sheet-music/ui/components/button';
 import { useState, type FormEvent, type JSX } from 'react';
 import { Link } from 'react-router';
+import { STANDALONE_LINK } from '../shell/classes';
 import { AuthCard } from './AuthCard';
 import type { AuthErrorCode } from './authPort';
 import { useAuth } from './AuthProvider';
@@ -31,9 +33,9 @@ export function ForgotPasswordPage(): JSX.Element {
         title="Check your email"
         icon={{ name: 'mail' }}
         links={
-          <Link className="ui-button ui-button--secondary ui-button--block" to="/login">
-            Back to sign in
-          </Link>
+          <Button asChild size="block">
+            <Link to="/login">Back to sign in</Link>
+          </Button>
         }
       >
         {/* Same text whether or not the address has an account: no enumeration. */}
@@ -69,13 +71,13 @@ export function ForgotPasswordPage(): JSX.Element {
       subtitle="Enter the email address of your account. We will send you a link to choose a new password."
       links={
         <p>
-          <Link className="ui-link" to="/login">
+          <Link className={STANDALONE_LINK} to="/login">
             Back to sign in
           </Link>
         </p>
       }
     >
-      <form noValidate onSubmit={submit} className="ui-form">
+      <form noValidate onSubmit={submit} className="flex flex-col gap-4">
         <TextField
           label="Email"
           name="email"
@@ -86,13 +88,9 @@ export function ForgotPasswordPage(): JSX.Element {
           error={fieldError}
         />
         <FormError message={error} />
-        <button
-          type="submit"
-          className="ui-button ui-button--primary ui-button--block"
-          disabled={pending}
-        >
+        <Button type="submit" variant="default" size="block" disabled={pending}>
           {pending ? 'Sending…' : 'Send reset link'}
-        </button>
+        </Button>
       </form>
     </AuthCard>
   );

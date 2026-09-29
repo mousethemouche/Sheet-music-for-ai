@@ -1,6 +1,8 @@
+import { Button } from '@sheet-music/ui/components/button';
 import { useEffect, useState, type FormEvent, type JSX } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
 import { Alert } from '../shell/Alert';
+import { STANDALONE_LINK } from '../shell/classes';
 import { AuthCard } from './AuthCard';
 import type { AuthRedirectResult } from './authPort';
 import { useAuth } from './AuthProvider';
@@ -54,13 +56,13 @@ export function SignInPage(): JSX.Element {
       links={
         <>
           <p>
-            <Link className="ui-link" to="/forgot-password">
+            <Link className={STANDALONE_LINK} to="/forgot-password">
               Forgot your password?
             </Link>
           </p>
           <p>
             No account yet?{' '}
-            <Link className="ui-link" to={withReturnPath('/signup', returnPath)}>
+            <Link className={STANDALONE_LINK} to={withReturnPath('/signup', returnPath)}>
               Create an account
             </Link>
           </p>
@@ -68,7 +70,7 @@ export function SignInPage(): JSX.Element {
       }
     >
       {linkError && <Alert tone="error">{linkError}</Alert>}
-      <form noValidate onSubmit={submit} className="ui-form">
+      <form noValidate onSubmit={submit} className="flex flex-col gap-4">
         <TextField
           label="Email"
           name="email"
@@ -88,13 +90,9 @@ export function SignInPage(): JSX.Element {
           error={fieldErrors.password}
         />
         <FormError message={error} />
-        <button
-          type="submit"
-          className="ui-button ui-button--primary ui-button--block"
-          disabled={pending}
-        >
+        <Button type="submit" variant="default" size="block" disabled={pending}>
           {pending ? 'Signing in…' : 'Sign in'}
-        </button>
+        </Button>
       </form>
     </AuthCard>
   );

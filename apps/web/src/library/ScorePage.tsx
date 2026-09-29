@@ -1,9 +1,14 @@
 import { scoreIdSchema } from '@sheet-music/music-contracts';
 import { ScorePlayer } from '@sheet-music/score-ui';
+import { Card } from '@sheet-music/ui/components/card';
+import { Chip } from '@sheet-music/ui/components/chip';
+import { Spinner } from '@sheet-music/ui/components/spinner';
+import { cn } from '@sheet-music/ui/lib/utils';
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import { Link, useParams } from 'react-router';
 import type { ApiResult, SavedScoreResponse, ScoresApi } from '../api/scoresApi';
 import type { WebPlayer } from '../player/webPlayer';
+import { CODE, STANDALONE_LINK } from '../shell/classes';
 import { usePrefersDark } from '../shell/usePrefersDark';
 import { ApiFailureAlert } from './ApiFailureAlert';
 import { formatDate } from './format';
@@ -80,25 +85,25 @@ function SavedScoreView(props: {
 
   if (result === null) {
     return (
-      <section aria-labelledby="score-title" className="score-page">
+      <section aria-labelledby="score-title" className={PAGE}>
         <BackToLibrary />
-        <div className="score-page__header">
+        <div className={HEADER}>
           <h1 id="score-title">Saved score</h1>
         </div>
-        <div className="ui-card ui-card--flat score-page__loading">
-          <span className="ui-spinner" aria-hidden="true" />
+        <Card className="flex min-h-60 flex-col items-center justify-center gap-3 text-[0.875rem] text-muted-foreground shadow-none">
+          <Spinner />
           <p role="status">Loading the score…</p>
-        </div>
+        </Card>
       </section>
     );
   }
 
   if (!result.ok) {
     return (
-      <section aria-labelledby="score-title" className="score-page">
+      <section aria-labelledby="score-title" className={PAGE}>
         {/* A missing score's state offers the way back itself: one link, not two. */}
         {result.error.kind !== 'not-found' && <BackToLibrary />}
-        <div className="score-page__header">
+        <div className={HEADER}>
           <h1 id="score-title">Saved score</h1>
         </div>
         <ApiFailureAlert
@@ -112,40 +117,47 @@ function SavedScoreView(props: {
 
   const saved = result.value;
   return (
-    <section aria-labelledby="score-title" className="score-page">
+    <section aria-labelledby="score-title" className={PAGE}>
       <BackToLibrary />
-      <div className="score-page__header">
+      <div className={HEADER}>
         <h1 id="score-title">{saved.title}</h1>
         {saved.tags.length > 0 && (
-          <ul aria-label="Tags" className="ui-chip-list">
+          <ul aria-label="Tags" className="mt-1 flex flex-wrap gap-1.5 max-sm:gap-2">
             {saved.tags.map((tag) => (
-              <li key={tag} className="ui-chip">
-                {tag}
-              </li>
+              <Chip asChild key={tag}>
+                <li>{tag}</li>
+              </Chip>
             ))}
           </ul>
         )}
-        <p className="ui-meta">
+        <p className="text-sm text-muted-foreground tabular-nums">
           Saved <time dateTime={saved.createdAt}>{formatDate(saved.createdAt)}</time>, updated{' '}
           <time dateTime={saved.updatedAt}>{formatDate(saved.updatedAt)}</time>, revision{' '}
           {saved.revision}.
         </p>
       </div>
       {/* No card around it: the notation paper and the controls bar are the only frames. */}
-      <div className="score-page__player">
+      <div className="min-w-0">
         <ScorePlayer artifact={saved} ports={player.ports} theme={theme} />
       </div>
-      <div className="score-page__id">
-        <p className="score-page__id-value">
-          Score ID: <code className="score-page__id-code">{saved.scoreId}</code>
+      {/* The score ID: a quiet row under a rule, not a second card. */}
+      <div className="flex flex-col gap-1 border-t pt-4">
+        <p className="text-[0.875rem] font-medium text-muted-foreground">
+          Score ID:{' '}
+          <code
+            // One box that wraps inside itself on phones (never two half-chips).
+            className={cn(CODE, 'inline-block max-w-full align-top font-normal text-foreground')}
+          >
+            {saved.scoreId}
+          </code>
         </p>
-        <p className="ui-small ui-muted">
+        <p className="text-sm text-muted-foreground">
           To keep working on this score with the AI, give it this ID in a conversation. Its edits
           update this saved score.
         </p>
       </div>
-      <p className="ui-small">
-        <Link className="ui-link" to="/about">
+      <p className="text-sm">
+        <Link className={STANDALONE_LINK} to="/about">
           Piano sound credits
         </Link>
       </p>
@@ -153,10 +165,17 @@ function SavedScoreView(props: {
   );
 }
 
+const PAGE = 'flex min-w-0 flex-col gap-6';
+
+const HEADER = 'flex flex-col items-start gap-2 [&>h1]:wrap-anywhere';
+
 function BackToLibrary(): JSX.Element {
   return (
     <p>
-      <Link className="ui-back-link" to="/library">
+      <Link
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground max-sm:-my-2.5 max-sm:min-h-10"
+        to="/library"
+      >
         <span aria-hidden="true">←</span>
         Back to your library
       </Link>

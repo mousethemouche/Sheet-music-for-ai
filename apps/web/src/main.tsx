@@ -1,5 +1,4 @@
-import './styles/base.css';
-import './styles/pages.css';
+import './styles/app.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';
@@ -10,7 +9,12 @@ import { createPrivateStateRegistry } from './auth/privateState';
 import { createSupabaseWebAuth } from './auth/supabaseAuthAdapter';
 import { readWebAuthConfig } from './config';
 import { createBrowserPlayer } from './player/browserPlayer';
+import { DARK_QUERY, followColorScheme } from './shell/colorScheme';
 import { ConfigurationErrorPage } from './shell/ConfigurationErrorPage';
+
+// The design tokens switch on a .light / .dark class of <html>: set it before
+// the first render and keep it equal to the system preference.
+followColorScheme(document.documentElement, window.matchMedia(DARK_QUERY));
 
 const container = document.getElementById('root');
 if (!container) {

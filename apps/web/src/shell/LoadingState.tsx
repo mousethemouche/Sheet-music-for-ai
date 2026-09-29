@@ -1,3 +1,5 @@
+import { Empty } from '@sheet-music/ui/components/empty';
+import { Spinner } from '@sheet-music/ui/components/spinner';
 import type { JSX, ReactNode } from 'react';
 
 /**
@@ -6,9 +8,9 @@ import type { JSX, ReactNode } from 'react';
  */
 export function LoadingState(props: { children: ReactNode }): JSX.Element {
   return (
-    <div className="ui-state">
-      <span className="ui-spinner" aria-hidden="true" />
+    <Empty>
+      <Spinner />
       <p role="status">{props.children}</p>
-    </div>
+    </Empty>
   );
 }

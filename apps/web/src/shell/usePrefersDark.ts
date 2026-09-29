@@ -1,12 +1,12 @@
 import { useSyncExternalStore } from 'react';
-
-const DARK_QUERY = '(prefers-color-scheme: dark)';
+import { DARK_QUERY } from './colorScheme';
 
 /**
  * Whether the system asks for a dark color scheme, updated when it changes.
- * The tokens follow the same media query, so the ScorePlayer's `theme` (its
- * notation paper and ink, DESIGN_SYSTEM.md §5) matches the app around it.
- * Without `matchMedia` (jsdom) it answers light, the player's default.
+ * main.tsx sets the page's `.dark` / `.light` class from the same query
+ * (colorScheme.ts), so the ScorePlayer's `theme` (its notation paper and ink,
+ * DESIGN_SYSTEM.md §5) matches the app around it. Without `matchMedia`
+ * (jsdom) it answers light, the player's default.
  */
 export function usePrefersDark(): boolean {
   return useSyncExternalStore(subscribe, prefersDark, () => false);

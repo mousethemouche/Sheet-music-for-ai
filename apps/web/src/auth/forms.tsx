@@ -1,3 +1,5 @@
+import { Input } from '@sheet-music/ui/components/input';
+import { Label } from '@sheet-music/ui/components/label';
 import { useCallback, useId, useRef, useState, type JSX } from 'react';
 import { Alert } from '../shell/Alert';
 import { MIN_PASSWORD_LENGTH } from './messages';
@@ -15,13 +17,12 @@ export function TextField(props: {
   const id = useId();
   const errorId = `${id}-error`;
   return (
-    <div className="ui-field">
-      <label htmlFor={id} className="ui-label">
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <Label htmlFor={id} className="leading-normal">
         {props.label}
-      </label>
-      <input
+      </Label>
+      <Input
         id={id}
-        className="ui-input"
         name={props.name}
         type={props.type}
         autoComplete={props.autoComplete}
@@ -31,7 +32,7 @@ export function TextField(props: {
         aria-describedby={props.error ? errorId : undefined}
       />
       {props.error && (
-        <span id={errorId} role="alert" className="ui-error-text">
+        <span id={errorId} role="alert" className="text-sm font-medium text-destructive-text">
           {props.error}
         </span>
       )}

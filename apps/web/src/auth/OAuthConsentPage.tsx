@@ -1,5 +1,7 @@
+import { Button } from '@sheet-music/ui/components/button';
 import { useCallback, useEffect, useState, type JSX } from 'react';
 import { useSearchParams } from 'react-router';
+import { Icon } from '../shell/icons';
 import { LoadingState } from '../shell/LoadingState';
 import { AuthCard } from './AuthCard';
 import type { AuthErrorCode, OAuthAuthorizationRequest, OAuthDecision } from './authPort';
@@ -116,32 +118,25 @@ function AuthorizationRequest(props: {
         {request.clientUri && ` (${request.clientUri})`} wants to use Sheet Music for AI as you:
         create, edit, save and search your scores. It asks to:
       </p>
-      <ul aria-label="Requested permissions" className="ui-scope-list">
+      <ul aria-label="Requested permissions" className="divide-y rounded-lg border">
         {request.scopes.map((scope) => (
-          <li key={scope}>{SCOPE_LABELS[scope] ?? scope}</li>
+          <li key={scope} className="flex items-center gap-2 px-3 py-2.5 text-[0.875rem]">
+            <Icon name="check" className="size-4 text-primary forced-colors:text-[CanvasText]" />
+            {SCOPE_LABELS[scope] ?? scope}
+          </li>
         ))}
       </ul>
-      <p className="ui-small ui-muted app-break">
+      <p className="text-sm text-muted-foreground wrap-anywhere">
         After you decide, you return to {request.redirectUri}.
       </p>
       <FormError message={error} />
-      <div className="ui-actions ui-actions--stretch">
-        <button
-          type="button"
-          className="ui-button ui-button--primary"
-          disabled={pending}
-          onClick={() => decide('approve')}
-        >
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="default" disabled={pending} onClick={() => decide('approve')}>
           Allow
-        </button>
-        <button
-          type="button"
-          className="ui-button ui-button--secondary"
-          disabled={pending}
-          onClick={() => decide('deny')}
-        >
+        </Button>
+        <Button disabled={pending} onClick={() => decide('deny')}>
           Deny
-        </button>
+        </Button>
       </div>
     </AuthCard>
   );

@@ -1,3 +1,4 @@
+import { Button } from '@sheet-music/ui/components/button';
 import { useEffect, useState, type FormEvent, type JSX } from 'react';
 import { Link } from 'react-router';
 import { LoadingState } from '../shell/LoadingState';
@@ -47,9 +48,9 @@ export function ResetPasswordPage(): JSX.Element {
         title={phase === 'expired' ? 'Reset link expired' : 'Reset link not valid'}
         icon={{ name: 'alert', tone: 'danger' }}
         links={
-          <Link className="ui-button ui-button--primary ui-button--block" to="/forgot-password">
-            Send a new reset link
-          </Link>
+          <Button asChild variant="default" size="block">
+            <Link to="/forgot-password">Send a new reset link</Link>
+          </Button>
         }
       >
         <p role="alert">
@@ -69,9 +70,9 @@ export function ResetPasswordPage(): JSX.Element {
         title="Password changed"
         icon={{ name: 'check', tone: 'success' }}
         links={
-          <Link className="ui-button ui-button--primary ui-button--block" to="/library">
-            Continue to your library
-          </Link>
+          <Button asChild variant="default" size="block">
+            <Link to="/library">Continue to your library</Link>
+          </Button>
         }
       >
         <p role="status">Your password has been changed.</p>
@@ -102,7 +103,7 @@ export function ResetPasswordPage(): JSX.Element {
       title="Choose a new password"
       subtitle={`Your new password needs ${MIN_PASSWORD_LENGTH} or more characters.`}
     >
-      <form noValidate onSubmit={submit} className="ui-form">
+      <form noValidate onSubmit={submit} className="flex flex-col gap-4">
         <TextField
           label="New password"
           name="new-password"
@@ -122,13 +123,9 @@ export function ResetPasswordPage(): JSX.Element {
           error={fieldErrors.confirmation}
         />
         <FormError message={error} />
-        <button
-          type="submit"
-          className="ui-button ui-button--primary ui-button--block"
-          disabled={pending}
-        >
+        <Button type="submit" variant="default" size="block" disabled={pending}>
           {pending ? 'Saving…' : 'Change password'}
-        </button>
+        </Button>
       </form>
     </AuthCard>
   );

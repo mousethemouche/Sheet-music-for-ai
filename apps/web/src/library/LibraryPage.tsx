@@ -3,6 +3,15 @@ import {
   type ListScoresResponse,
   type ScoreSummary,
 } from '@sheet-music/music-contracts';
+import { Button } from '@sheet-music/ui/components/button';
+import { Card } from '@sheet-music/ui/components/card';
+import { Chip } from '@sheet-music/ui/components/chip';
+import { emptyMediaVariants, emptyVariants } from '@sheet-music/ui/components/empty';
+import { Input } from '@sheet-music/ui/components/input';
+import { Label } from '@sheet-music/ui/components/label';
+import { Skeleton } from '@sheet-music/ui/components/skeleton';
+import { Spinner } from '@sheet-music/ui/components/spinner';
+import { cn } from '@sheet-music/ui/lib/utils';
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type JSX } from 'react';
 import { Link } from 'react-router';
 import type { ApiResult, ScoresApi } from '../api/scoresApi';
@@ -21,12 +30,10 @@ import { usePrivateCleanup, useSignedInUser } from './privateState';
 export function LibraryPage(props: { scores: ScoresApi }): JSX.Element {
   const user = useSignedInUser();
   return (
-    <section aria-labelledby="library-title" className="library">
-      <div className="ui-page-header">
-        <div className="ui-page-header__titles">
-          <h1 id="library-title">Your library</h1>
-          {user?.email && <p className="ui-page-subtitle">Signed in as {user.email}.</p>}
-        </div>
+    <section aria-labelledby="library-title">
+      <div className="mb-6 flex flex-col gap-1">
+        <h1 id="library-title">Your library</h1>
+        {user?.email && <p className="text-muted-foreground">Signed in as {user.email}.</p>}
       </div>
       {user && <Library key={user.id} scores={props.scores} />}
     </section>
@@ -115,101 +122,97 @@ function Library(props: { scores: ScoresApi }): JSX.Element {
     <>
       {/* Nothing to search in an empty library: the empty state says what to do instead. */}
       {view !== 'empty' && (
-        <div className="library__search">
+        <div className="mb-6 flex flex-col gap-3">
           <form
             role="search"
             aria-label="Search your library"
             onSubmit={onSubmit}
-            className="library__search-form"
+            className="flex flex-wrap items-center gap-2"
           >
-            <div className="library__search-field">
-              <label htmlFor={inputId} className="ui-visually-hidden">
+            <div className="relative min-w-0 flex-[1_1_260px]">
+              <Label htmlFor={inputId} className="sr-only">
                 Search titles and tags
-              </label>
-              <Icon name="search" className="library__search-icon" />
-              <input
+              </Label>
+              <Icon
+                name="search"
+                className="pointer-events-none absolute top-1/2 left-3 size-[18px] -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
                 id={inputId}
                 type="search"
-                className="ui-input library__search-input"
+                className="pl-[38px]"
                 placeholder="Search titles and tags"
                 value={draft}
                 maxLength={PAYLOAD_LIMITS.searchQueryLength}
                 onChange={(event) => setDraft(event.currentTarget.value)}
               />
             </div>
-            <button type="submit" className="ui-button ui-button--secondary">
-              Search
-            </button>
+            <Button type="submit">Search</Button>
           </form>
 
           {searching && (
-            <div className="library__refine">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               {search.tags.length > 0 && (
-                <div className="library__filters">
-                  <p id={filtersId} className="library__filters-label">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p id={filtersId} className="text-sm text-muted-foreground">
                     Showing only scores tagged with all of:
                   </p>
-                  <ul aria-labelledby={filtersId} className="ui-chip-list">
+                  <ul aria-labelledby={filtersId} className={CHIP_LIST}>
                     {search.tags.map((tag) => (
                       <li key={tag}>
-                        <button
-                          type="button"
-                          className="ui-chip ui-chip--selected"
-                          aria-label={`Remove tag filter ${tag}`}
-                          onClick={() => removeTag(tag)}
-                        >
-                          {tag}{' '}
-                          <span className="ui-chip__remove" aria-hidden="true">
-                            ×
-                          </span>
-                        </button>
+                        <Chip asChild selected>
+                          <button
+                            type="button"
+                            aria-label={`Remove tag filter ${tag}`}
+                            onClick={() => removeTag(tag)}
+                          >
+                            {tag}{' '}
+                            <span
+                              className="text-[1.15em] leading-none opacity-80"
+                              aria-hidden="true"
+                            >
+                              ×
+                            </span>
+                          </button>
+                        </Chip>
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
-              <button
-                type="button"
-                className="ui-button ui-button--ghost ui-button--sm library__clear"
-                onClick={clear}
-              >
+              <Button variant="ghost" size="sm" onClick={clear}>
                 Clear search
-              </button>
+              </Button>
             </div>
           )}
         </div>
       )}
 
-      {/* One live region for every state; only its surroundings change. */}
+      {/* One live region for every state: the same element; only its surroundings change. */}
       <div className={STATUS_CLASS[view]}>
         {(view === 'empty' || view === 'no-match') && (
-          <span className="ui-state__icon" aria-hidden="true">
+          <span className={cn(emptyMediaVariants({ variant: 'icon' }), 'mb-1')} aria-hidden="true">
             <Icon name={view === 'empty' ? 'music' : 'search'} />
           </span>
         )}
-        {view === 'empty' && <h2 className="ui-state__title">No saved scores yet</h2>}
-        {(view === 'loading' || view === 'loading-more') && (
-          <span className="ui-spinner ui-spinner--sm" aria-hidden="true" />
-        )}
+        {view === 'empty' && <h2 className={STATE_TITLE}>No saved scores yet</h2>}
+        {(view === 'loading' || view === 'loading-more') && <Spinner size="sm" />}
         <p
           role="status"
           className={
-            view === 'no-match'
-              ? 'ui-state__title'
-              : view === 'empty'
-                ? 'ui-state__text'
-                : undefined
+            view === 'no-match' ? STATE_TITLE : view === 'empty' ? 'max-w-[46ch]' : undefined
           }
         >
           {statusText(result, load, items.length, page?.total, searching)}
         </p>
         {view === 'no-match' && (
-          <p className="ui-state__text">Try other words, or remove a tag filter.</p>
+          <p className="max-w-[46ch]">Try other words, or remove a tag filter.</p>
         )}
       </div>
 
       {result && !result.ok && (
         <ApiFailureAlert
+          className="mb-4"
           error={result.error}
           resource="library"
           onRetry={() => setLoad({ ...load })}
@@ -217,19 +220,19 @@ function Library(props: { scores: ScoresApi }): JSX.Element {
       )}
 
       {view === 'loading' && (
-        <div className="ui-card-grid" aria-hidden="true">
+        <div className={CARD_GRID} aria-hidden="true">
           {SKELETON_CARDS.map((key) => (
-            <div key={key} className="ui-card library-card library-card--skeleton">
-              <span className="ui-skeleton ui-skeleton--title" />
-              <span className="ui-skeleton library-card__skeleton-chips" />
-              <span className="ui-skeleton library-card__skeleton-meta" />
-            </div>
+            <Card key={key} className={cn(CARD_LAYOUT, 'shadow-none')}>
+              <Skeleton className="h-[1.125rem] w-3/5" />
+              <Skeleton className="h-[22px] w-[45%] rounded-full" />
+              <Skeleton className="mt-auto h-[0.875rem] w-[35%]" />
+            </Card>
           ))}
         </div>
       )}
 
       {items.length > 0 && (
-        <ul aria-label="Saved scores" className="ui-card-grid">
+        <ul aria-label="Saved scores" className={CARD_GRID}>
           {items.map((summary) => (
             <SummaryItem
               key={summary.scoreId}
@@ -242,14 +245,10 @@ function Library(props: { scores: ScoresApi }): JSX.Element {
       )}
 
       {page?.nextOffset != null && (
-        <div className="library__more">
-          <button
-            type="button"
-            className="ui-button ui-button--secondary"
-            onClick={() => setLoad({ search, offset: page.nextOffset ?? 0, shown: items })}
-          >
+        <div className="mt-6 flex justify-center">
+          <Button onClick={() => setLoad({ search, offset: page.nextOffset ?? 0, shown: items })}>
             Show more
-          </button>
+          </Button>
         </div>
       )}
     </>
@@ -263,36 +262,58 @@ function SummaryItem(props: {
 }): JSX.Element {
   const { summary, activeTags, onTag } = props;
   return (
-    <li className="ui-card ui-card--interactive library-card">
-      <h2 className="ui-card__title">
-        <Link className="ui-card__link" to={`/scores/${encodeURIComponent(summary.scoreId)}`}>
-          {summary.title}
-        </Link>
-      </h2>
-      {summary.tags.length > 0 && (
-        <ul aria-label="Tags" className="ui-chip-list">
-          {summary.tags.map((tag) => {
-            const active = hasTag(activeTags, tag);
-            return (
-              <li key={tag}>
-                <button
-                  type="button"
-                  className={active ? 'ui-chip ui-chip--selected' : 'ui-chip'}
-                  aria-label={`Filter by tag ${tag}`}
-                  disabled={active}
-                  onClick={() => onTag(tag)}
-                >
-                  {tag}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+    // The whole card opens the score through its one real link, whose ::after
+    // covers the card; the tag buttons sit above it and stay clickable. The
+    // card shows the link's focus ring.
+    <Card
+      asChild
+      className={cn(
+        CARD_LAYOUT,
+        'relative transition-[border-color,box-shadow] duration-120 ease-standard hover:border-border-control hover:shadow-md',
+        'has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ring',
       )}
-      <p className="ui-card__meta library-card__meta">
-        Updated <time dateTime={summary.updatedAt}>{formatDate(summary.updatedAt)}</time>
-      </p>
-    </li>
+    >
+      <li>
+        <h2 className="text-md leading-tight font-semibold wrap-anywhere">
+          <Link
+            className="after:absolute after:inset-0 focus-visible:outline-none"
+            to={`/scores/${encodeURIComponent(summary.scoreId)}`}
+          >
+            {summary.title}
+          </Link>
+        </h2>
+        {summary.tags.length > 0 && (
+          <ul aria-label="Tags" className={CHIP_LIST}>
+            {summary.tags.map((tag) => {
+              const active = hasTag(activeTags, tag);
+              return (
+                <li key={tag}>
+                  <Chip
+                    asChild
+                    selected={active}
+                    // A tag already used as a filter reads as selected, not as broken.
+                    className="z-10 disabled:opacity-100"
+                  >
+                    <button
+                      type="button"
+                      aria-label={`Filter by tag ${tag}`}
+                      disabled={active}
+                      onClick={() => onTag(tag)}
+                    >
+                      {tag}
+                    </button>
+                  </Chip>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {/* Dates line up at the bottom of each row of cards. */}
+        <p className="mt-auto text-sm text-muted-foreground tabular-nums">
+          Updated <time dateTime={summary.updatedAt}>{formatDate(summary.updatedAt)}</time>
+        </p>
+      </li>
+    </Card>
   );
 }
 
@@ -321,16 +342,32 @@ function viewOf(
   return searching ? 'no-match' : 'empty';
 }
 
+/** A small count or "Loading…" above the results. */
+const STATUS_LINE = 'mb-4 flex items-center gap-2 text-sm text-muted-foreground tabular-nums';
+
+/** The heart of the empty and no-match states: the bordered Empty look. */
+const STATUS_STATE = cn(emptyVariants({ variant: 'bordered' }), 'gap-2 text-[0.875rem]');
+
 /** The status line is a small count above the results, or the heart of an empty state. */
 const STATUS_CLASS: Readonly<Record<View, string>> = {
-  loading: 'library__status',
-  'loading-more': 'library__status',
-  results: 'library__status',
-  empty: 'library__status ui-state ui-state--bordered',
-  'no-match': 'library__status ui-state ui-state--bordered',
+  loading: STATUS_LINE,
+  'loading-more': STATUS_LINE,
+  results: STATUS_LINE,
+  empty: STATUS_STATE,
+  'no-match': STATUS_STATE,
   // Empty text: kept in the tree (the live region stays), out of the layout.
-  error: 'ui-visually-hidden',
+  error: 'sr-only',
 };
+
+const STATE_TITLE = 'text-md font-semibold text-foreground';
+
+/** Responsive list of cards: one column on phones, more when wide. */
+const CARD_GRID = 'grid grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] gap-4';
+
+const CARD_LAYOUT = 'flex flex-col gap-3 sm:p-5';
+
+/** Tag chips: 6 px apart, 8 px on phones where button chips grow to a 40 px target. */
+const CHIP_LIST = 'flex flex-wrap gap-1.5 max-sm:gap-2';
 
 const SKELETON_CARDS = ['a', 'b', 'c'] as const;
 

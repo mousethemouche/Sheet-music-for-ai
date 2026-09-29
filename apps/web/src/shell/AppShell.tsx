@@ -1,9 +1,12 @@
+import { Button } from '@sheet-music/ui/components/button';
+import { cn } from '@sheet-music/ui/lib/utils';
 import { useState, type JSX } from 'react';
 import { Link, NavLink, Outlet, useLocation, useMatch, useNavigate } from 'react-router';
 import { useAuth } from '../auth/AuthProvider';
 import { usePendingAction } from '../auth/forms';
 import { authErrorMessage } from '../auth/messages';
 import { Alert } from './Alert';
+import { CONTAINER, TEXT_LINK } from './classes';
 
 /** A failed account action, shown on the page where it happened. */
 interface AccountError {
@@ -19,10 +22,16 @@ export function AppShell(): JSX.Element {
     setAccountError(message === null ? null : { path: pathname, message });
   return (
     <>
-      <header className="ui-header">
-        <div className="ui-container ui-header__inner">
-          <Link to="/" className="ui-brand">
-            <span className="ui-brand__mark" aria-hidden="true">
+      <header className="sticky top-0 z-10 h-14 flex-none border-b bg-header backdrop-blur-[8px] backdrop-saturate-[1.8]">
+        <div className={cn(CONTAINER, 'flex h-full items-center gap-4')}>
+          <Link
+            to="/"
+            className="inline-flex min-h-10 items-center gap-2 rounded-md font-semibold tracking-tight whitespace-nowrap"
+          >
+            <span
+              className="inline-grid size-6 place-items-center rounded-md bg-primary text-[15px] leading-none text-primary-foreground"
+              aria-hidden="true"
+            >
               ♪
             </span>
             Sheet Music for AI
@@ -30,24 +39,29 @@ export function AppShell(): JSX.Element {
           <AccountNav onError={onAccountError} />
         </div>
       </header>
-      <main className="ui-main">
-        <div className="ui-container">
+      <main className="flex-[1_0_auto] pt-8 pb-12">
+        <div className={CONTAINER}>
           {/* In the flow above the page, never over it; it stays with the page it belongs to. */}
           {accountError !== null && accountError.path === pathname && (
-            <Alert
-              tone="error"
-              className="app-account-alert"
-              onDismiss={() => setAccountError(null)}
-            >
+            <Alert tone="error" className="mb-6" onDismiss={() => setAccountError(null)}>
               {accountError.message}
             </Alert>
           )}
           <Outlet />
         </div>
       </main>
-      <footer className="ui-footer">
-        <div className="ui-container">
-          <Link to="/about">About and credits</Link>
+      <footer className="flex-none border-t py-6 text-sm text-muted-foreground">
+        <div className={CONTAINER}>
+          <Link
+            to="/about"
+            className={cn(
+              TEXT_LINK,
+              // Touch screens: a 40 px tall target that takes no more room in the flow.
+              'hover:text-foreground max-sm:-my-3 max-sm:inline-flex max-sm:min-h-10 max-sm:items-center',
+            )}
+          >
+            About and credits
+          </Link>
         </div>
       </footer>
     </>
@@ -71,24 +85,22 @@ function AccountNav(props: { onError: (message: string | null) => void }): JSX.E
   if (state.status === 'signed-out') {
     const both = !onSignIn && !onSignUp;
     return (
-      <nav aria-label="Account" className="app-nav">
-        <div className="ui-header__end">
+      <nav aria-label="Account" className={NAV}>
+        <div className={HEADER_END}>
           {!onSignIn && (
-            <Link to="/login" className="ui-button ui-button--ghost ui-button--sm">
-              Sign in
-            </Link>
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/login">Sign in</Link>
+            </Button>
           )}
           {!onSignUp && (
-            <Link
-              to="/signup"
-              className={
-                both
-                  ? 'ui-button ui-button--secondary ui-button--sm app-nav__signup'
-                  : 'ui-button ui-button--secondary ui-button--sm'
-              }
+            <Button
+              asChild
+              size="sm"
+              // Phones: the sign-in page links to account creation; the brand keeps its room.
+              className={both ? 'max-[440px]:hidden' : undefined}
             >
-              Create account
-            </Link>
+              <Link to="/signup">Create account</Link>
+            </Button>
           )}
         </div>
       </nav>
@@ -104,24 +116,33 @@ function AccountNav(props: { onError: (message: string | null) => void }): JSX.E
     });
 
   return (
-    <nav aria-label="Account" className="app-nav">
+    <nav aria-label="Account" className={NAV}>
       <NavLink
         to="/library"
-        className={inScore ? 'ui-nav__link app-nav__link--section' : 'ui-nav__link'}
+        // A saved score belongs to the Library section: same look as the current page.
+        className={cn(NAV_LINK, inScore && 'bg-muted text-foreground')}
       >
         Library
       </NavLink>
-      <div className="ui-header__end">
-        {!onLibrary && !onConsent && <span className="ui-header__email">{state.user.email}</span>}
-        <button
-          type="button"
-          className="ui-button ui-button--secondary ui-button--sm"
-          disabled={pending}
-          onClick={onSignOut}
-        >
+      <div className={HEADER_END}>
+        {!onLibrary && !onConsent && (
+          <span className="hidden max-w-[28ch] truncate text-sm text-muted-foreground min-[561px]:block">
+            {state.user.email}
+          </span>
+        )}
+        <Button size="sm" disabled={pending} onClick={onSignOut}>
           {pending ? 'Signing out…' : 'Sign out'}
-        </button>
+        </Button>
       </div>
     </nav>
   );
 }
+
+/** The one "Account" nav: Library next to the brand, the account at the end. */
+const NAV = 'flex min-w-0 flex-auto items-center gap-1';
+
+const HEADER_END = 'ml-auto flex min-w-0 items-center gap-3';
+
+/** 32 px (40 px on phones); react-router's NavLink sets aria-current="page" on the current page. */
+const NAV_LINK =
+  'inline-flex h-10 items-center rounded-lg px-2.5 text-sm font-medium text-muted-foreground transition-colors duration-120 ease-standard hover:bg-accent hover:text-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground sm:h-8';

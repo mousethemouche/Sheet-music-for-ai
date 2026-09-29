@@ -1,9 +1,12 @@
+import { Button } from '@sheet-music/ui/components/button';
+import { Empty, EmptyContent, EmptyMedia } from '@sheet-music/ui/components/empty';
 import { useState, type JSX } from 'react';
 import { Link } from 'react-router';
 import type { ApiFailure, ApiFailureKind } from '../api/scoresApi';
 import { useAuth } from '../auth/AuthProvider';
 import { usePendingAction } from '../auth/forms';
 import { authErrorMessage } from '../auth/messages';
+import { CODE } from '../shell/classes';
 import { Icon } from '../shell/icons';
 
 /** What failed to load: the library list or one saved score. */
@@ -20,35 +23,37 @@ export function ApiFailureAlert(props: {
   error: ApiFailure;
   resource: FailedResource;
   onRetry: () => void;
+  className?: string;
 }): JSX.Element {
   const { error, resource, onRetry } = props;
   return (
-    <div role="alert" className="ui-state ui-state--bordered api-failure">
-      <span className="ui-state__icon ui-state__icon--danger" aria-hidden="true">
+    <Empty role="alert" variant="bordered" className={props.className}>
+      <EmptyMedia variant="danger" aria-hidden="true">
         <Icon name="alert-circle" />
-      </span>
-      <p className="ui-state__title api-failure__message">{failureMessage(error.kind, resource)}</p>
+      </EmptyMedia>
+      {/* The message is the state's title: body color, not red. */}
+      <p className="max-w-[46ch] text-md font-semibold text-foreground">
+        {failureMessage(error.kind, resource)}
+      </p>
       {error.kind === 'unauthenticated' && <SignInAgain />}
       {error.kind === 'not-found' && resource === 'score' && (
-        <p className="ui-state__actions">
-          <Link className="ui-button ui-button--secondary" to="/library">
-            Back to your library
-          </Link>
-        </p>
+        <EmptyContent>
+          <Button asChild>
+            <Link to="/library">Back to your library</Link>
+          </Button>
+        </EmptyContent>
       )}
       {retryable(error.kind, resource) && (
-        <p className="ui-state__actions">
-          <button type="button" className="ui-button ui-button--secondary" onClick={onRetry}>
-            Try again
-          </button>
-        </p>
+        <EmptyContent>
+          <Button onClick={onRetry}>Try again</Button>
+        </EmptyContent>
       )}
       {error.correlationId !== null && (
-        <p className="api-failure__reference">
-          Reference: <code>{error.correlationId}</code>
+        <p className="text-xs">
+          Reference: <code className={CODE}>{error.correlationId}</code>
         </p>
       )}
-    </div>
+    </Empty>
   );
 }
 
@@ -106,16 +111,11 @@ function SignInAgain(): JSX.Element {
       if (!result.ok) setError(authErrorMessage(result.error));
     });
   return (
-    <div className="ui-state__actions api-failure__actions">
-      <button
-        type="button"
-        className="ui-button ui-button--secondary"
-        disabled={pending}
-        onClick={onClick}
-      >
+    <EmptyContent className="flex-col items-center">
+      <Button disabled={pending} onClick={onClick}>
         Sign in again
-      </button>
-      {error !== null && <p className="ui-error-text"> {error}</p>}
-    </div>
+      </Button>
+      {error !== null && <p className="text-sm font-medium text-destructive-text"> {error}</p>}
+    </EmptyContent>
   );
 }

@@ -1,5 +1,7 @@
+import { Button } from '@sheet-music/ui/components/button';
 import { useState, type FormEvent, type JSX } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
+import { STANDALONE_LINK } from '../shell/classes';
 import { AuthCard } from './AuthCard';
 import { useAuth } from './AuthProvider';
 import { FormError, TextField, emailError, newPasswordError, usePendingAction } from './forms';
@@ -34,12 +36,9 @@ export function SignUpPage(): JSX.Element {
         title="Check your email"
         icon={{ name: 'mail' }}
         links={
-          <Link
-            className="ui-button ui-button--secondary ui-button--block"
-            to={withReturnPath('/login', returnPath)}
-          >
-            Go to sign in
-          </Link>
+          <Button asChild size="block">
+            <Link to={withReturnPath('/login', returnPath)}>Go to sign in</Link>
+          </Button>
         }
       >
         <p role="status">
@@ -81,13 +80,13 @@ export function SignUpPage(): JSX.Element {
       links={
         <p>
           Already have an account?{' '}
-          <Link className="ui-link" to={withReturnPath('/login', returnPath)}>
+          <Link className={STANDALONE_LINK} to={withReturnPath('/login', returnPath)}>
             Sign in
           </Link>
         </p>
       }
     >
-      <form noValidate onSubmit={submit} className="ui-form">
+      <form noValidate onSubmit={submit} className="flex flex-col gap-4">
         <TextField
           label="Email"
           name="email"
@@ -107,13 +106,9 @@ export function SignUpPage(): JSX.Element {
           error={fieldErrors.password}
         />
         <FormError message={error} />
-        <button
-          type="submit"
-          className="ui-button ui-button--primary ui-button--block"
-          disabled={pending}
-        >
+        <Button type="submit" variant="default" size="block" disabled={pending}>
           {pending ? 'Creating account…' : 'Create account'}
-        </button>
+        </Button>
       </form>
     </AuthCard>
   );

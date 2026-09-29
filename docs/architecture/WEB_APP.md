@@ -22,10 +22,14 @@ library reads are APPLICATION_LAYER.md §7.2 (#21).
 | `src/player/assetPaths.ts`           | `PIANO_ASSET_PATH`, shared by the Vite config and the player                                 |
 | `src/player/CreditsPage.tsx`         | `/about`: SoundFont attribution with links to the published license and notice               |
 | `vite.config.ts`                     | `pianoSoundFont` plugin: serves (dev) and emits (build) the SoundFont directory              |
+| `src/styles/app.css`                 | The one stylesheet: Tailwind CSS v4, the shared theme, element defaults (Styling below)      |
+| `src/shell/colorScheme.ts`           | `followColorScheme`: keeps the `.light` / `.dark` class of `<html>` on the system preference |
+| `src/shell/classes.ts`               | Shared class strings (page container, auth column, links, inline code)                       |
 | `src/library/test/`, `src/api/test/` | LIB-UI-01..03, the API config and access-token tests, fakes (`support.tsx`, `fakePlayer.ts`) |
 
-`main.tsx` is the composition root. It builds the API client (Bearer token
-from `AuthPort.getAccessToken`) and the browser player once per page load and
+`main.tsx` is the composition root. It sets the page's theme class
+(Styling below), then builds the API client (Bearer token from
+`AuthPort.getAccessToken`) and the browser player once per page load and
 passes them to `App` as `library`. Tests pass the same `App` a real API client
 over a fake `fetch` and the real `createWebPlayer` over fake renderer/engine
 factories, so no test loads VexFlow or SpessaSynth.
@@ -165,6 +169,42 @@ Hosting (#16) must:
   `'self'` (SoundFont fetch); `script-src 'self'` covers the worklet module;
   `font-src data:` for the embedded engraving fonts.
 
+## Styling
+
+The screens are built from the `@sheet-music/ui` components (shadcn/ui on
+Radix, customised: Button, Input, Label, Card, Chip, Alert, Empty, Skeleton,
+Spinner) and Tailwind CSS v4 utilities; there is no hand-written stylesheet
+per page and no `.ui-*` class any more. DESIGN_SYSTEM.md has the tokens and
+the components; REPO_LAYOUT.md ("CSS and the design system") has the host
+contract.
+
+- `src/styles/app.css`, imported only by `main.tsx`, is the Tailwind entry:
+  `@import 'tailwindcss' source(none)`, `@sheet-music/ui/styles/theme.css`,
+  and `@source` for `apps/web/src` and `packages/score-ui/src`. Its base
+  layer only restores what Tailwind's preflight resets: body text and
+  background, the `#root` column, heading sizes (h1 24 px, h2 18 px, h3/h4
+  15 px, semibold, tight), tabular `time`, and the 2 px focus ring at 2 px
+  offset on every focusable element. A broken `@source` builds without
+  error: `test/stylesheet-sources.test.ts` builds `app.css` with this
+  app's Vite configuration and checks that a class only this app, only
+  score-ui and only the ui components use each reached the CSS.
+- Classes that pages share but no component covers live in
+  `src/shell/classes.ts` (Tailwind scans it): the 1040 px container, the
+  auth column, standalone and running-text links, inline code.
+- Theme: the tokens switch on a `.light` / `.dark` class of `<html>`.
+  Before the first render, `main.tsx` calls `followColorScheme` with the
+  root element and the `(prefers-color-scheme: dark)` query; the class then
+  follows later system changes too. The ScorePlayer's `theme` prop comes
+  from the same query (`usePrefersDark`), so its paper and ink match.
+- No theme flash: until that class is set (the script may still be
+  downloading), `app.css` gives `:root` `color-scheme: light dark` and the
+  body the system `Canvas` color, so a dark system shows a dark page, not
+  the light tokens; `index.html` also declares `color-scheme`. No inline
+  script (the CSP forbids one).
+- CSP unchanged: Tailwind ships as one external stylesheet, allowed by
+  `style-src 'self'`; Radix writes only `style` attributes (the slider
+  thumb position), allowed by the existing `'unsafe-inline'`. No web font.
+
 ## Environment
 
 `apps/web/.env.example`; every value is compiled into the public bundle.
@@ -188,6 +228,8 @@ the web origin in `API_ALLOWED_ORIGINS`.
 | LIB-UI-03 `src/library/test/lib-ui-03-open.test.tsx`   | open fetches once, one player on the canonical content, GET only, stable ID, invalid shapes refused before mounting, audio stopped before sign-out, score switch, credits           |
 | `src/api/test/api-config.test.ts`                      | https-only API base URL                                                                                                                                                             |
 | `src/api/test/supabase-access-token.test.ts`           | `getAccessToken` on real supabase-js (fake HTTP): null, access token, null after sign-out                                                                                           |
+| `src/test/color-scheme.test.ts`                        | `followColorScheme`: `.dark` or `.light` from the query, live changes both ways, stop                                                                                               |
+| `test/stylesheet-sources.test.ts`                      | `app.css` built by the web's Vite config holds a class of each scanned source (this app, score-ui, ui components): a dropped `@source` fails                                        |
 
 Reused, not repeated: ScorePlayer behaviour (UI-01..05, #7), renderer and
 engine adapters (#5/#6, `spessasynth-engine.mcpui.test.ts`), sign-out and

@@ -1,8 +1,10 @@
+import { cn } from '@sheet-music/ui/lib/utils';
 import type { JSX } from 'react';
 
 /**
  * Small decorative line icons (24 px grid, `currentColor`), always
- * aria-hidden: the text next to them carries the meaning.
+ * aria-hidden: the text next to them carries the meaning. 20 px unless
+ * `className` gives another `size-*`.
  */
 export type IconName =
   'mail' | 'check' | 'alert' | 'alert-circle' | 'close' | 'search' | 'music' | 'shield' | 'compass';
@@ -59,7 +61,7 @@ const PATHS: Readonly<Record<IconName, JSX.Element>> = {
 export function Icon(props: { name: IconName; className?: string }): JSX.Element {
   return (
     <svg
-      className={props.className ?? 'app-icon'}
+      className={cn('size-5 shrink-0', props.className)}
       viewBox="0 0 24 24"
       width="20"
       height="20"
