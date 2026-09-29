@@ -7,15 +7,15 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json && tsc -p test/tsconfig.json"
   },
   "dependencies": {
     "@sheet-music/music-domain": "workspace:*",
     "@sheet-music/playback-core": "workspace:*",
-    "spessasynth_core": "catalog:",
     "spessasynth_lib": "catalog:"
   },
   "devDependencies": {
-    "@sheet-music/test-fixtures": "workspace:*"
+    "@sheet-music/test-fixtures": "workspace:*",
+    "spessasynth_core": "catalog:"
   }
 }
