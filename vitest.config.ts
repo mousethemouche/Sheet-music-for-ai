@@ -114,6 +114,24 @@ export default defineConfig({
           exclude: IGNORED,
         },
       },
+      {
+        // Opt-in release project (docs/release/RELEASE_CHECKLIST.md): no
+        // package script selects it (`--project cloud` does; so does a bare
+        // `vitest run`). Its suites against the deployed apps and the
+        // Supabase project skip unless CLOUD_E2E=1; the release tooling's own
+        // tests need no network, and the CI `quality` job runs only those
+        // (`--project cloud tests/cloud/support tools/release`).
+        test: {
+          name: 'cloud',
+          environment: 'node',
+          include: ['tests/cloud/**/*.test.ts', 'tools/release/**/*.test.ts'],
+          exclude: IGNORED,
+          fileParallelism: false,
+          maxWorkers: 1,
+          testTimeout: 120_000,
+          hookTimeout: 120_000,
+        },
+      },
     ],
   },
 });

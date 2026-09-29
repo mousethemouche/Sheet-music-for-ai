@@ -64,6 +64,7 @@ default.
 | `sheet_music_test_mcpui`          | MCP-UI-01..03 (`MCP_UI_DATABASE` of `apps/mcp/test/mcp-ui/protocol.ts`)                                                                                                                  |
 | `sheet_music_test_api`            | every apps/api integration file: HTTP routes, OAUTH-02 (REST wire), SEC-02/SEC-03 (api), ERR-I01 (Nest)                                                                                  |
 | `sheet_music_test_flow`           | `tests/acceptance` (`ACCEPTANCE_DATABASE` of `support/stack.ts`): FLOW-01, ACCESS-01, CI-04                                                                                            |
+| `sheet_music_test_deploy`         | DEPLOY-01 (`tools/deploy/deploy-01.int.test.ts`, `pnpm check:deploy`, its own Vitest configuration): the served serverless entries                                                      |
 | `sheet_music_missing_database`    | never created: failure injection (ERR-I01 MCP and Nest, DB-04). Do not pass it to `createTestDatabase`                                                                                   |
 | `sheet_music_unreachable`         | never created: failure injection (DB-04)                                                                                                                                                 |
 

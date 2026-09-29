@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    // Playwright's page.evaluate callbacks run in the browser (localStorage).
+    "lib": ["ES2023", "DOM"],
+    // The suites reuse apps/mcp/test/support/tool-calls.ts, which compiles
+    // with the MCP SDK types (apps/mcp disables exactOptionalPropertyTypes).
+    "exactOptionalPropertyTypes": false
+  },
+  "include": ["**/*.ts"]
+}

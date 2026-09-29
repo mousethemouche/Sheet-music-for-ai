@@ -266,16 +266,20 @@ described in [MCP_VIEW.md](MCP_VIEW.md) §5.
 Environment (template: `apps/mcp/.env.example`), read and validated once by
 `loadMcpConfig` before anything starts:
 
-| Variable                 | Required | Meaning                                                                                                   |
-| ------------------------ | -------- | --------------------------------------------------------------------------------------------------------- |
-| `MCP_PUBLIC_URL`         | yes      | canonical public URL of the endpoint = the protected resource; https (http on loopback), path `/mcp`      |
-| `SUPABASE_URL`           | yes      | Supabase project origin; issuer `<url>/auth/v1` and JWKS derived with `supabaseAuthEndpoints`             |
-| `DATABASE_URL`           | yes      | `postgres(ql)://` URL of the server login role (member of `score_owner`); secret                          |
-| `MCP_ALLOWED_ORIGINS`    | no       | comma-separated exact browser origins allowed on `/mcp`; default none                                     |
-| `MCP_AUTH_AUDIENCE_MODE` | no       | `resource` (default) or `interim-authenticated` (§2)                                                      |
-| `MCP_TRUST_PROXY_HOPS`   | no       | proxy hops for Express `trust proxy` (0-10, default 0), so the per-IP limit sees the client address       |
-| `PORT`                   | no       | default 3001                                                                                              |
-| `MCP_VIEW_HTML_PATH`     | no       | the built View (default `dist/view/index.html` next to the bundle); its `assets/` directory is `/assets/` |
+| Variable                 | Required | Meaning                                                                                                                      |
+| ------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `MCP_PUBLIC_URL`         | yes      | canonical public URL of the endpoint = the protected resource; https (http on loopback), path `/mcp`                         |
+| `SUPABASE_URL`           | yes      | Supabase project origin; issuer `<url>/auth/v1` and JWKS derived with `supabaseAuthEndpoints`                                |
+| `DATABASE_URL`           | yes      | `postgres(ql)://` URL of the server login role (member of `score_owner`), no TLS parameter; secret                           |
+| `DATABASE_CA_CERT`       | yes\*    | PEM certificate of the database CA: verified TLS (DATABASE.md §10.2); public                                                 |
+| `MCP_ALLOWED_ORIGINS`    | no       | comma-separated exact browser origins allowed on `/mcp`; default none                                                        |
+| `MCP_AUTH_AUDIENCE_MODE` | no       | `resource` (default) or `interim-authenticated` (§2)                                                                         |
+| `MCP_TRUST_PROXY_HOPS`   | no       | proxy hops for Express `trust proxy` (0-10, default 0; 1 in the Vercel adapter), so the per-IP limit sees the client address |
+| `PORT`                   | no       | default 3001                                                                                                                 |
+| `MCP_VIEW_HTML_PATH`     | no       | the built View (default `dist/view/index.html` next to the bundle); its `assets/` directory is `/assets/`                    |
+
+\* Unless `DATABASE_URL` is on the loopback host (local development and
+tests).
 
 - **Fails safely.** Every missing or invalid variable is collected and the
   process exits with code 1 after one `config.invalid` log line listing the

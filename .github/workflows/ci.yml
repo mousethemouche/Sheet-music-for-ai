@@ -79,7 +79,8 @@ jobs:
 
   # CI-01 + CI-02 + CI-04 (manifest half): frozen install, typecheck, lint,
   # independent app builds, unit/component tests (no DB, no browser; includes
-  # tools/inventory) and the architecture rules.
+  # tools/inventory), the release tooling's offline tests and the
+  # architecture rules.
   quality:
     name: Typecheck, lint, build, unit/component tests, architecture
     needs: changes
@@ -97,9 +98,13 @@ jobs:
       - run: pnpm typecheck
       # The cross-app suites are not a workspace package; `pnpm typecheck` does not reach them.
       - run: pnpm exec tsc -p tests/acceptance/tsconfig.json
+      - run: pnpm exec tsc -p tests/cloud/tsconfig.json
       - run: pnpm lint
       - run: pnpm build
       - run: pnpm test
+      # Release tooling (docs/release): its own offline tests only. The cloud
+      # suites themselves need the deployed apps and run at release time.
+      - run: pnpm exec vitest run --project cloud tests/cloud/support tools/release
       - run: pnpm check:arch
 
   # CI-03 + CI-04 (exposed-surface half): every integration suite (apps,
@@ -145,6 +150,42 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  # DEPLOY-01 (#16, docs/deploy/VERCEL.md §5): each Vercel project built with
+  # its vercel.json command, client output scanned, serverless entries served
+  # behind the local routing stand-in against a throwaway Postgres.
+  deploy:
+    name: Deployment configuration (DEPLOY-01)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sheet_music_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sheet_music_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Throwaway service-container credentials; the suite uses only sheet_music_test_deploy.
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/sheet_music_test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:deploy
 
   # CI-05: the MCP-UI sub-suite (#11 MCP-UI-01..03 and the adapter runtime
   # checks) in one Chromium worker, on the production-built bundles, for

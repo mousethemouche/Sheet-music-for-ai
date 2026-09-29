@@ -10,15 +10,19 @@ cross-app suites from [ACCEPTANCE.md](ACCEPTANCE.md).
 | ------------------------------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
 | `Detect code changes` (`changes`)                                        | always                                                     | decides `code` and `mcp_ui` from the changed files (§2)                                                                                                            | TEST_PLAN §8                 |
 | `Documentation format` (`docs`)                                          | documentation-only change                                  | frozen install, `prettier --check .`                                                                                                                               | cheap docs changes           |
-| `Typecheck, lint, build, unit/component tests, architecture` (`quality`) | any code change                                            | frozen install, `pnpm typecheck`, `tsc -p tests/acceptance/tsconfig.json`, `pnpm lint`, `pnpm build` (web, api, mcp independently), `pnpm test`, `pnpm check:arch` | CI-01, CI-02, CI-04 manifest |
+| `Typecheck, lint, build, unit/component tests, architecture` (`quality`) | any code change                                            | frozen install, `pnpm typecheck`, `tsc -p tests/acceptance/tsconfig.json`, `tsc -p tests/cloud/tsconfig.json`, `pnpm lint`, `pnpm build` (web, api, mcp independently), `pnpm test`, the release tooling's offline tests (`vitest run --project cloud tests/cloud/support tools/release`), `pnpm check:arch` | CI-01, CI-02, CI-04 manifest, release tooling |
 | `Integration (Postgres)` (`integration`)                                 | any code change                                            | `pnpm test:integration` (every `*.int.test.ts`: apps, packages, `tests/acceptance`) against a `postgres:15` service, one worker, files serially                    | CI-03, CI-04 surface         |
+| `Deployment configuration (DEPLOY-01)` (`deploy`)                        | any code change                                            | frozen install, `pnpm check:deploy` (each Vercel project built with its `vercel.json` command, client output scanned, serverless entries served locally) against a `postgres:15` service | DEPLOY-01 (#16)              |
 | `MCP-UI integration (Chromium)` (`mcp-ui`)                               | a change the suite depends on, a manual run, a release tag | frozen install, Playwright Chromium, `pnpm build`, `pnpm test:mcp-ui` (every `*.mcpui.test.ts`), one browser worker, `postgres:15` service                         | CI-05                        |
 
 - Real failures fail the job; no step is `continue-on-error`. No test is
   skipped today (`.skip`, `.todo`, `skipIf`), and a skipped test is not
-  coverage; Vitest refuses `.only` when `CI` is set.
-- Integration and MCP-UI each get their own throwaway Postgres container
-  (one database stack per job). Test files run one at a time in one worker
+  coverage; Vitest refuses `.only` when `CI` is set. The cloud suites of
+  `tests/cloud` (AUTH-UI-I01, OAUTH-04), which skip without `CLOUD_E2E=1`,
+  are typechecked but not run: they need the deployed apps (release only,
+  RELEASE_CHECKLIST.md step 7).
+- Integration, deploy and MCP-UI each get their own throwaway Postgres
+  container (one database stack per job). Test files run one at a time in one worker
   (`vitest.config.ts`) and each closes its apps, servers and pools.
 - `pnpm test:integration` / `pnpm test:mcp-ui` are called as
   `pnpm exec vitest run --project <p>` with an extra JUnit reporter, so a
@@ -28,9 +32,10 @@ cross-app suites from [ACCEPTANCE.md](ACCEPTANCE.md).
 
 - **Documentation-only** change (every file under `docs/` or `*.md`): only
   `Documentation format`. No build, no database, no browser.
-- **Any other change**: `quality` and `integration`. Shared contracts, auth,
-  migrations and the lockfile therefore always run every dependent
-  integration suite.
+- **Any other change**: `quality`, `integration` and `deploy`. Shared
+  contracts, auth, migrations and the lockfile therefore always run every
+  dependent integration suite, and a change that breaks a Vercel build or
+  a serverless entry fails before a release.
 - **MCP-UI** runs when a changed non-Markdown file is under `apps/mcp/`,
   `packages/` (every workspace package reaches the MCP server or the View:
   contracts, domain, renderer, playback, score-ui, auth, persistence,
@@ -57,13 +62,14 @@ Rulesets, or Branches > Branch protection rules):
    - `Documentation format`
    - `Typecheck, lint, build, unit/component tests, architecture`
    - `Integration (Postgres)`
+   - `Deployment configuration (DEPLOY-01)`
    - `MCP-UI integration (Chromium)`
 4. Block force pushes and deletions of `main`.
 
 Notes:
 
-- A job skipped by its condition reports success, so requiring all five is
-  safe: a documentation-only PR passes with `quality`/`integration`/`mcp-ui`
+- A job skipped by its condition reports success, so requiring all six is
+  safe: a documentation-only PR passes with `quality`/`integration`/`deploy`/`mcp-ui`
   skipped, and a code PR passes with `Documentation format` skipped.
 - `Detect code changes` must be required too: if it failed, the jobs that
   depend on it would be skipped, and a skipped required check counts as
@@ -99,7 +105,9 @@ Notes:
 - The target-host compatibility smoke (TEST_PLAN §8, MCP_UI_TEST_PROCESS):
   a real MCP host with the real Supabase OAuth flow is a manual release
   check; CI does not prove it.
-- Deployment (#16) and the real Supabase project.
+- Deployment (#16) and the real Supabase project: CI proves the deployment
+  configuration locally (DEPLOY-01), never a deployment (DEPLOY-02 is a
+  release step).
 
 ## 6. Checking the workflow locally
 
@@ -108,8 +116,10 @@ also checks the `run:` scripts). The same commands as CI:
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm typecheck && pnpm exec tsc -p tests/acceptance/tsconfig.json
-pnpm lint && pnpm build && pnpm test && pnpm check:arch
+pnpm typecheck && pnpm exec tsc -p tests/acceptance/tsconfig.json && pnpm exec tsc -p tests/cloud/tsconfig.json
+pnpm lint && pnpm build && pnpm test
+pnpm exec vitest run --project cloud tests/cloud/support tools/release && pnpm check:arch
 pnpm test:integration          # TEST_DATABASE_URL, databases named sheet_music_* only
+pnpm check:deploy              # same server; database sheet_music_test_deploy
 pnpm exec playwright install chromium && pnpm test:mcp-ui
 ```

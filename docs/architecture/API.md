@@ -112,9 +112,13 @@ Environment (`apps/api/.env.example`), parsed by `loadApiConfig`:
 | Variable              | Required | Meaning                                                                                         |
 | --------------------- | -------- | ----------------------------------------------------------------------------------------------- |
 | `SUPABASE_URL`        | yes      | project URL `https://<ref>.supabase.co` (http only on loopback); issuer and JWKS derive from it |
-| `DATABASE_URL`        | yes      | postgres URL of the server login role (member of `score_owner`). Secret                         |
+| `DATABASE_URL`        | yes      | postgres URL of the server login role (member of `score_owner`), no TLS parameter. Secret       |
+| `DATABASE_CA_CERT`    | yes\*    | PEM certificate of the database CA: verified TLS (DATABASE.md §10.2). Public                    |
 | `API_ALLOWED_ORIGINS` | no       | comma-separated exact web origins; empty = no browser origin (warned at start)                  |
 | `PORT`                | no       | default 3000                                                                                    |
+
+\* Unless `DATABASE_URL` is on the loopback host (local development and
+tests).
 
 An invalid configuration fails before anything starts:
 `api.config_invalid` lists the faulty variables and rules, never a value,
