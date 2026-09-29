@@ -21,10 +21,14 @@ import type {
 } from '../../auth/authPort';
 import type { LeaveApp } from '../../auth/OAuthConsentPage';
 import { createPrivateStateRegistry, type PrivateStateRegistry } from '../../auth/privateState';
+import type { LibraryServices } from '../../library/services';
+import { pendingLibraryServices } from '../../library/test/pendingServices';
 
 export const ALICE: AuthUser = { id: 'user-a', email: 'alice@example.com' };
 export const BOB: AuthUser = { id: 'user-b', email: 'bob@example.com' };
 export const PASSWORD = 'correct horse battery';
+/** What the fake returns from getAccessToken(); library tests check it reaches the API. */
+export const TEST_ACCESS_TOKEN = 'test-access-token';
 
 export const ok = <T,>(value: T): AuthResult<T> => ({ ok: true, value });
 export const fail = <T,>(error: AuthErrorCode): AuthResult<T> => ({ ok: false, error });
@@ -55,6 +59,10 @@ export class FakeAuthPort implements AuthPort {
   }
 
   readonly getSession: Mock<AuthPort['getSession']>;
+
+  readonly getAccessToken = vi.fn<AuthPort['getAccessToken']>(() =>
+    Promise.resolve<string | null>(TEST_ACCESS_TOKEN),
+  );
 
   readonly getRedirectResult = vi.fn<AuthPort['getRedirectResult']>(() =>
     Promise.resolve<AuthRedirectResult>({ kind: 'none' }),
@@ -107,11 +115,12 @@ export class FakeAuthPort implements AuthPort {
   }
 }
 
-/** Renders the whole app at `path` inside a memory router. */
+/** Renders the whole app at `path` inside a memory router (library requests never settle by default). */
 export function renderApp(options: {
   port: FakeAuthPort;
   path: string;
   privateState?: PrivateStateRegistry;
+  library?: LibraryServices;
 }): RenderResult & { user: UserEvent; leaveApp: Mock<LeaveApp> } {
   const leaveApp = vi.fn<LeaveApp>();
   const user = userEvent.setup();
@@ -121,6 +130,7 @@ export function renderApp(options: {
         auth={options.port}
         privateState={options.privateState ?? createPrivateStateRegistry()}
         leaveApp={leaveApp}
+        library={options.library ?? pendingLibraryServices()}
       />
       <CurrentLocation />
     </MemoryRouter>,

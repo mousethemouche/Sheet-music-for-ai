@@ -83,7 +83,8 @@ describe('AUTH-UI-02 private state', () => {
     await user.click(await screen.findByRole('button', { name: 'Sign out' }));
 
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
-    expect(location()).toBe('/login');
+    // The guard's `/login?next=...` redirect may land first; sign-out then replaces it.
+    await vi.waitFor(() => expect(location()).toBe('/login'));
     expect(order.slice(0, 3)).toEqual(['stop audio', 'clear score cache', 'provider sign-out']);
     expect(screen.queryByText(ALICE.email ?? '')).not.toBeInTheDocument();
   });

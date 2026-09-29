@@ -82,6 +82,13 @@ export type OAuthDecision = 'approve' | 'deny';
 export interface AuthPort {
   /** The session restored on this device, or null. */
   getSession(): Promise<AuthSession | null>;
+  /**
+   * Access token of the current session (renewed by the provider when it has
+   * expired), or null without a session. Rejects when a renewal cannot reach
+   * the provider. Only the app's own API client (#15) uses it, as a Bearer
+   * token; it is never stored, logged or rendered.
+   */
+  getAccessToken(): Promise<string | null>;
   /** Subscribes to session changes; the returned function unsubscribes. */
   onChange(listener: (change: AuthChange, session: AuthSession | null) => void): () => void;
   getRedirectResult(): Promise<AuthRedirectResult>;

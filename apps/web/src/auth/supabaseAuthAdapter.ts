@@ -70,6 +70,17 @@ export function createSupabaseAuthAdapter(options: SupabaseAuthAdapterOptions): 
       return toSession(data.session);
     },
 
+    async getAccessToken() {
+      // getSession() renews an expired access token before returning it. A
+      // renewal that could not reach the provider keeps the session: that is
+      // an outage (rejection), not a signed-out user (null).
+      const { data, error } = await auth.getSession();
+      if (!data.session && error && isAuthRetryableFetchError(error)) {
+        throw new Error('The session could not be renewed: the auth provider is unreachable.');
+      }
+      return data.session?.access_token ?? null;
+    },
+
     onChange(listener) {
       const { data } = auth.onAuthStateChange((event, session) => {
         const change = toChange(event, session);

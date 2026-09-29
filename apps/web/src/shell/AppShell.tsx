@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { usePendingAction } from '../auth/forms';
 import { authErrorMessage } from '../auth/messages';
 
-/** Minimal app frame: product name, account navigation and the current page. */
+/** Minimal app frame: product name, account navigation, the current page and the credits link. */
 export function AppShell(): JSX.Element {
   return (
     <>
@@ -15,6 +15,9 @@ export function AppShell(): JSX.Element {
       <main>
         <Outlet />
       </main>
+      <footer>
+        <Link to="/about">About and credits</Link>
+      </footer>
     </>
   );
 }
