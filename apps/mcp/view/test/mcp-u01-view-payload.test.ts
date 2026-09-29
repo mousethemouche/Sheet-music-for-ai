@@ -170,6 +170,7 @@ describe('MCP-U01 View state: which result is shown', () => {
       kind: 'rejected',
       code: 'SCORE_VALIDATION_FAILED',
       message: 'The score breaks ScoreSpec v1 rules; see details. Nothing was stored.',
+      details: ['Note rich-rh-n3 has two teaching colors.'],
     });
   });
 

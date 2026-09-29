@@ -11,7 +11,7 @@ export interface SoundCreditsProps {
 /** Credits the piano sound as its license requires (docs/assets/SOUNDFONT.md §2). */
 export function SoundCredits({ licenseUrl, openLink }: SoundCreditsProps): JSX.Element {
   return (
-    <details data-testid="sound-credits">
+    <details data-testid="sound-credits" className="sv-credits">
       <summary>Sound credits</summary>
       <p>{PIANO_SOUNDFONT.attribution}</p>
       {licenseUrl === null ? null : (

@@ -16,7 +16,13 @@ import type { ScoreArtifact } from '@sheet-music/music-contracts';
 import { parseToolResult } from './tool-result';
 
 export type ViewNotice =
-  | { readonly kind: 'rejected'; readonly code: string; readonly message: string }
+  | {
+      readonly kind: 'rejected';
+      readonly code: string;
+      readonly message: string;
+      /** Messages of the envelope's first details (at most MAX_NOTICE_DETAILS). */
+      readonly details: readonly string[];
+    }
   | { readonly kind: 'unreadable' }
   | { readonly kind: 'cancelled' };
 
@@ -48,7 +54,11 @@ export const INITIAL_VIEW_STATE: ViewState = {
 const UNREADABLE_ERROR = {
   code: 'UNKNOWN',
   message: 'The request failed and the host sent no readable error.',
+  details: undefined,
 };
+
+/** How many of a rejection's details the notice lists. */
+export const MAX_NOTICE_DETAILS = 3;
 
 function acceptsArtifact(current: ScoreArtifact | null, next: ScoreArtifact): boolean {
   return current === null || (next.scoreId === current.scoreId && next.revision > current.revision);
@@ -62,8 +72,9 @@ function onToolResult(state: ViewState, result: unknown): ViewState {
         ? { ...state, artifact: parsed.artifact, notice: null }
         : state;
     case 'tool-error': {
-      const { code, message } = parsed.error ?? UNREADABLE_ERROR;
-      return { ...state, notice: { kind: 'rejected', code, message } };
+      const { code, message, details } = parsed.error ?? UNREADABLE_ERROR;
+      const shown = (details ?? []).slice(0, MAX_NOTICE_DETAILS).map((detail) => detail.message);
+      return { ...state, notice: { kind: 'rejected', code, message, details: shown } };
     }
     case 'invalid':
       return { ...state, notice: { kind: 'unreadable' } };

@@ -14,6 +14,8 @@ import type { ScoreMountProps } from './score-mount';
 import { ScoreView } from './ScoreView';
 import { SoundCredits } from './SoundCredits';
 import { INITIAL_VIEW_STATE, createViewStore } from './view-state';
+// Inlined into the single-file document by the build (vite-plugin-singlefile).
+import './view.css';
 
 const container = document.getElementById('root');
 if (!container) {
@@ -36,7 +38,8 @@ const openLink = (url: string): void => {
 function PlayerMount({ artifact, theme }: ScoreMountProps): JSX.Element {
   return (
     <>
-      <ScorePlayer artifact={artifact} ports={ports} theme={theme} />
+      {/* Controls first: the host sizes the frame to its content, so Play stays above the fold. */}
+      <ScorePlayer artifact={artifact} ports={ports} theme={theme} controlsPosition="top" />
       <SoundCredits licenseUrl={assets?.licenseUrl ?? null} openLink={openLink} />
     </>
   );

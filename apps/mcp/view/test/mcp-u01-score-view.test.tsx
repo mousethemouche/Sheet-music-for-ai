@@ -3,7 +3,7 @@
  * validated artifact, and a rejected edit leaves the mounted score in place
  * with a visible, recoverable error.
  */
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import type { JSX } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { ScoreMountProps } from '../src/score-mount';
@@ -50,9 +50,27 @@ describe('MCP-U01 ScoreView', () => {
     const slot = screen.getByTestId('score-mount');
     expect(slot).toHaveAttribute('data-score-id', FIXTURE_ID);
     expect(slot).toHaveAttribute('data-revision', String(FIXTURE_REVISION));
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'The request was rejected (SCORE_VALIDATION_FAILED)',
+    const alert = screen.getByRole('alert');
+    // The message and the details the message refers to; the code is data, not text.
+    expect(alert).toHaveTextContent(
+      'The request was rejected: The score breaks ScoreSpec v1 rules; see details. Nothing was stored. The score shown is unchanged.',
     );
-    expect(screen.getByRole('alert')).toHaveTextContent('The score shown is unchanged.');
+    expect(
+      within(within(alert).getByRole('list', { name: 'Details' }))
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual(['Note rich-rh-n3 has two teaching colors.']);
+    expect(alert).not.toHaveTextContent('SCORE_VALIDATION_FAILED');
+    expect(alert).toHaveAttribute('data-error-code', 'SCORE_VALIDATION_FAILED');
+  });
+
+  it('shows a rejection without details as its message alone', () => {
+    const { deliver } = renderView();
+    deliver(errorResult(JSON.stringify({ code: 'RATE_LIMITED', message: 'Too many requests.' })));
+
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('The request was rejected: Too many requests.');
+    expect(within(alert).queryByRole('list')).toBeNull();
+    expect(alert).toHaveAttribute('data-error-code', 'RATE_LIMITED');
   });
 });

@@ -105,6 +105,8 @@ export interface ViewSnapshot {
   readonly documentTheme: string | null;
   /** Rendered width of the View root, in CSS px. */
   readonly rootWidth: number | null;
+  /** Computed left + right padding of the View root, in CSS px (it depends on the width). */
+  readonly rootPaddingX: number | null;
   /** Families of the loaded font faces of the View document. */
   readonly loadedFonts: readonly string[];
   readonly audio: readonly AudioTap[];

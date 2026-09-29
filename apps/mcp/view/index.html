@@ -7,12 +7,11 @@
     <meta name="sheet-music-asset-origin" content="" />
     <title>Sheet Music for AI - score view</title>
     <style>
-      /* Host style variables (MCP Apps host context) with neutral fallbacks. */
+      /* Document box only; the View's look is src/view.css (bundled inline). */
       :root {
         color-scheme: light dark;
-        font-family: var(--font-sans, system-ui, sans-serif);
-        color: var(--color-text-primary, CanvasText);
-        background: var(--color-background-primary, Canvas);
+        /* No background of its own: the host's shows through the iframe. */
+        background: transparent;
       }
       body {
         margin: 0;
@@ -22,19 +21,11 @@
         overflow: auto;
         padding: 12px 16px;
       }
-      [role='alert'] {
-        color: var(--color-text-danger, #b3261e);
-      }
-      p {
-        margin: 0 0 8px;
-      }
-      [data-testid='sound-credits'] {
-        margin-top: 8px;
-        font-size: 0.75rem;
-        color: var(--color-text-secondary, GrayText);
-      }
-      [data-testid='sound-credits'] a {
-        color: inherit;
+      /* Phone-width chats: the notation keeps more of the frame's width. */
+      @media (max-width: 400px) {
+        #root {
+          padding-inline: 8px;
+        }
       }
     </style>
   </head>

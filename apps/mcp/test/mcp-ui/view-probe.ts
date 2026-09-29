@@ -93,6 +93,11 @@ export function snapshotViewDocument(): ViewSnapshot {
           },
     documentTheme: document.documentElement.getAttribute('data-theme'),
     rootWidth: root === null ? null : root.getBoundingClientRect().width,
+    rootPaddingX:
+      root === null
+        ? null
+        : Number.parseFloat(getComputedStyle(root).paddingLeft) +
+          Number.parseFloat(getComputedStyle(root).paddingRight),
     loadedFonts: [...document.fonts]
       .filter((face) => face.status === 'loaded')
       .map((face) => face.family.replace(/["']/g, '')),
@@ -118,6 +123,7 @@ export const ABSENT_VIEW: ViewSnapshot = Object.freeze({
   notation: null,
   documentTheme: null,
   rootWidth: null,
+  rootPaddingX: null,
   loadedFonts: [],
   audio: [],
   credits: null,

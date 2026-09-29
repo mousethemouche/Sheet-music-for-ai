@@ -74,7 +74,10 @@ const AUDIBLE = 0.005;
 const SILENT = 0.0005;
 
 const FRAME = { width: 760, height: 1000 } as const;
-/** #root of view/index.html: `padding: 12px 16px`, `box-sizing: border-box`. */
+/**
+ * #root of view/index.html is `box-sizing: border-box` with 16 px side padding
+ * (8 px at 400 px and below): the notation takes the rest of the width.
+ */
 const ROOT_HORIZONTAL_PADDING = 2 * 16;
 
 const HOST_CONTEXT: McpUiHostContext = {
@@ -577,8 +580,10 @@ describe('MCP-UI-03 rejected edit, host context and teardown', { timeout: 60_000
     const view = await waitForView('the notice', (state) => state.notice !== null);
     expect(view.notice).toMatchObject({ kind: 'rejected', code: 'SCORE_VALIDATION_FAILED' });
     expect(view.notice?.text).toMatch(
-      /^The request was rejected \(SCORE_VALIDATION_FAILED\): .+ The score shown is unchanged\.$/,
+      /^The request was rejected: .+ The score shown is unchanged\./,
     );
+    // The code is the notice's data (above), not part of its text.
+    expect(view.notice?.text).not.toContain('SCORE_VALIDATION_FAILED');
     expect(view).toMatchObject({
       connection: 'connected',
       mount: { scoreId: created.scoreId, revision: '1' },
@@ -608,9 +613,11 @@ describe('MCP-UI-03 rejected edit, host context and teardown', { timeout: 60_000
       (state) =>
         state.documentTheme === 'dark' &&
         state.mount?.theme === 'dark' &&
-        state.notation?.width === width - ROOT_HORIZONTAL_PADDING,
+        state.notation?.width === width - (state.rootPaddingX ?? Number.NaN),
     );
     expect(view.rootWidth).toBe(width);
+    // 420 px is above the narrow breakpoint: the full padding applies.
+    expect(view.rootPaddingX).toBe(ROOT_HORIZONTAL_PADDING);
     // The narrower layout is taller: the View reports its new size.
     await expect.poll(sizeEvents).toBeGreaterThan(before);
   });
