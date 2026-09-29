@@ -3,6 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Filled by the MCP server when it serves this document (view-resource.ts); keep verbatim. -->
+    <meta name="sheet-music-asset-origin" content="" />
     <title>Sheet Music for AI - score view</title>
     <style>
       /* Host style variables (MCP Apps host context) with neutral fallbacks. */
@@ -23,12 +25,16 @@
       [role='alert'] {
         color: var(--color-text-danger, #b3261e);
       }
-      h1 {
-        font-size: 1.1rem;
-        margin: 0 0 4px;
-      }
       p {
         margin: 0 0 8px;
+      }
+      [data-testid='sound-credits'] {
+        margin-top: 8px;
+        font-size: 0.75rem;
+        color: var(--color-text-secondary, GrayText);
+      }
+      [data-testid='sound-credits'] a {
+        color: inherit;
       }
     </style>
   </head>

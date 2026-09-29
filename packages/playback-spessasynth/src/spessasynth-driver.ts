@@ -10,6 +10,14 @@
  * (whatever is still queued on it plays silently) and all its voices are
  * killed just after its last queued message. A channel is reused only once
  * its queue has drained.
+ *
+ * The worklet decodes the .sf3 samples with WebAssembly and reports its
+ * decoder ready once it is instantiated. A page whose CSP refuses
+ * WebAssembly (no 'wasm-unsafe-eval', as in the MCP Apps spec's default
+ * iframe policy) makes the processor fail silently: no message, no
+ * processor error. The load therefore waits at most `decoderStartTimeoutMs`
+ * for that report and then fails with ASSET_LOAD_FAILED, which the player
+ * shows as "Audio unavailable" with Retry, instead of staying in Loading.
  */
 import {
   PlaybackError,
@@ -30,6 +38,17 @@ const DEFAULT_VOLUME = 100;
 const PIANO_CHANNELS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15] as const;
 /** Seconds after a silenced channel's last queued message before its voices are killed and it may be reused. */
 const DRAIN_SECONDS = 0.05;
+/**
+ * Default wait for the worklet's decoder report. Instantiating the decoder
+ * takes milliseconds; the bound only has to be far above that on a slow
+ * device while still ending a load that can never succeed.
+ */
+export const DEFAULT_DECODER_START_TIMEOUT_MS = 15_000;
+
+export interface SpessaSynthDriverOptions {
+  /** Longest wait for the worklet to report its decoder ready (default DEFAULT_DECODER_START_TIMEOUT_MS). */
+  readonly decoderStartTimeoutMs?: number;
+}
 
 interface Session {
   readonly context: AudioContext;
@@ -45,7 +64,14 @@ export class SpessaSynthDriver implements SynthDriver {
   private readonly lastTime = new Map<number, number>();
   private failureListener: ((error: PlaybackError) => void) | undefined;
 
-  constructor(private readonly assets: PlaybackAssetConfig) {}
+  private readonly decoderStartTimeoutMs: number;
+
+  constructor(
+    private readonly assets: PlaybackAssetConfig,
+    options: SpessaSynthDriverOptions = {},
+  ) {
+    this.decoderStartTimeoutMs = options.decoderStartTimeoutMs ?? DEFAULT_DECODER_START_TIMEOUT_MS;
+  }
 
   prepare(): Promise<void> {
     if (this.disposed) {
@@ -174,7 +200,10 @@ export class SpessaSynthDriver implements SynthDriver {
         }
       });
       synth = created;
-      await Promise.race([addSoundBank(created, bytes), processorFailed]);
+      await Promise.race([
+        addSoundBank(created, bytes, this.decoderStartTimeoutMs),
+        processorFailed,
+      ]);
       if (this.disposed) {
         throw new PlaybackError('PLAYBACK_FAILED', 'The synthesizer was disposed while loading.');
       }
@@ -235,10 +264,34 @@ export class SpessaSynthDriver implements SynthDriver {
   }
 }
 
-/** Adds the SoundFont; the worklet reports a decoding failure as an event, not a rejection. */
-async function addSoundBank(synth: WorkletSynthesizer, bytes: ArrayBuffer): Promise<void> {
+/** `synth.isReady`, or ASSET_LOAD_FAILED once `timeoutMs` has passed without the decoder report. */
+async function decoderReady(synth: WorkletSynthesizer, timeoutMs: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(
+        new PlaybackError(
+          'ASSET_LOAD_FAILED',
+          'The synthesizer decoder did not start (the page may block WebAssembly).',
+        ),
+      );
+    }, timeoutMs);
+  });
   try {
-    await synth.isReady;
+    await Promise.race([synth.isReady, timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Adds the SoundFont; the worklet reports a decoding failure as an event, not a rejection. */
+async function addSoundBank(
+  synth: WorkletSynthesizer,
+  bytes: ArrayBuffer,
+  decoderStartTimeoutMs: number,
+): Promise<void> {
+  try {
+    await decoderReady(synth, decoderStartTimeoutMs);
     await new Promise<void>((resolve, reject) => {
       synth.eventHandler.addEvent('soundBankError', ERROR_LISTENER_ID, (cause) => {
         reject(

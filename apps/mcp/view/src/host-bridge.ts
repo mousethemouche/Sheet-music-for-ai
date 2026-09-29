@@ -10,6 +10,8 @@ import {
   applyHostFonts,
   applyHostStyleVariables,
 } from '@modelcontextprotocol/ext-apps';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { flushSync } from 'react-dom';
 import type { ViewStore } from './view-state';
 
 const px = (value: number | undefined): string => (value === undefined ? '' : `${value}px`);
@@ -17,6 +19,7 @@ const px = (value: number | undefined): string => (value === undefined ? '' : `$
 /**
  * Applies the host context the View uses: theme, host style variables and
  * fonts, display mode, and the container size (fixed or maximum width/height).
+ * The player follows the root's width (its own ResizeObserver).
  */
 export function applyHostContext(context: McpUiHostContext, root: HTMLElement): void {
   if (context.theme !== undefined) {
@@ -40,37 +43,73 @@ export function applyHostContext(context: McpUiHostContext, root: HTMLElement): 
   }
 }
 
-/** Connects the View to its host; returns the disconnect function. */
-export function connectToHost(app: App, store: ViewStore, root: HTMLElement): () => void {
+/**
+ * Connects the View to its host (default transport: postMessage to the
+ * parent frame) for the lifetime of the document.
+ *
+ * Create the App with `autoResize: false`: the View starts the size
+ * notifications itself after the handshake, because the App keeps no handle
+ * to stop them and teardown must.
+ *
+ * Teardown (`ui/resource-teardown`): the score is unmounted synchronously,
+ * so the player's engine is destroyed (audio silenced, AudioContext closed)
+ * and its renderer released before the host receives the answer; then every
+ * listener and the size observer are removed, so nothing the host sends
+ * afterwards reaches the View. The View leaves its side of the transport
+ * open: the answer must still be posted, and the host closes the bridge
+ * when it removes the iframe (closing it here would also make a size
+ * notification the App already scheduled for the next frame reject).
+ */
+export function connectToHost(
+  app: App,
+  store: ViewStore,
+  root: HTMLElement,
+  transport?: Transport,
+): void {
+  let stopSizeNotifications: (() => void) | undefined;
+  let detached = false;
+
   const onToolResult = (result: unknown): void => store.dispatch({ type: 'tool-result', result });
   const onToolCancelled = (): void => store.dispatch({ type: 'tool-cancelled' });
   const onHostContext = (): void => {
     const context = app.getHostContext();
-    if (context !== undefined) {
-      applyHostContext(context, root);
+    if (context === undefined) {
+      return;
+    }
+    applyHostContext(context, root);
+    if (context.theme !== undefined) {
+      store.dispatch({ type: 'host-theme', theme: context.theme });
     }
   };
+  const detach = (): void => {
+    if (detached) {
+      return;
+    }
+    detached = true;
+    app.removeEventListener('toolresult', onToolResult);
+    app.removeEventListener('toolcancelled', onToolCancelled);
+    app.removeEventListener('hostcontextchanged', onHostContext);
+    stopSizeNotifications?.();
+  };
+
   app.addEventListener('toolresult', onToolResult);
   app.addEventListener('toolcancelled', onToolCancelled);
   app.addEventListener('hostcontextchanged', onHostContext);
-  // Unmounting the score stops its audio before the host removes the iframe.
   app.onteardown = () => {
-    store.dispatch({ type: 'teardown' });
+    flushSync(() => store.dispatch({ type: 'teardown' }));
+    detach();
     return {};
   };
 
-  app.connect().then(
+  app.connect(transport).then(
     () => {
+      if (detached) {
+        return;
+      }
+      stopSizeNotifications = app.setupSizeChangedNotifications();
       onHostContext();
       store.dispatch({ type: 'connected' });
     },
     () => store.dispatch({ type: 'connection-failed' }),
   );
-
-  return () => {
-    app.removeEventListener('toolresult', onToolResult);
-    app.removeEventListener('toolcancelled', onToolCancelled);
-    app.removeEventListener('hostcontextchanged', onHostContext);
-    void app.close();
-  };
 }

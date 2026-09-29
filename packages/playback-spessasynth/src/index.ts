@@ -7,6 +7,10 @@
  */
 export { createSpessaSynthEngine } from './engine';
 export {
+  type SpessaSynthDriverOptions,
+  DEFAULT_DECODER_START_TIMEOUT_MS,
+} from './spessasynth-driver';
+export {
   type AssetFileReader,
   type SoundFontAssetManifest,
   PIANO_SOUNDFONT,

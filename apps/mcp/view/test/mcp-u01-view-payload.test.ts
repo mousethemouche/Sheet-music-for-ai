@@ -184,6 +184,7 @@ describe('MCP-U01 View state: which result is shown', () => {
       connection: 'closed',
       artifact: null,
       notice: null,
+      theme: 'light',
     });
   });
 });

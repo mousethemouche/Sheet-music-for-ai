@@ -202,8 +202,9 @@ Rules:
 
 ## 7. SpessaSynth adapter
 
-`createSpessaSynthEngine(assets)` (`@sheet-music/playback-spessasynth`) is the
-controller over `SpessaSynthDriver` and a 25 ms `setInterval` ticker.
+`createSpessaSynthEngine(assets, options?)` (`@sheet-music/playback-spessasynth`)
+is the controller over `SpessaSynthDriver` and a 25 ms `setInterval` ticker.
+`options.decoderStartTimeoutMs` exists for tests; apps use the default.
 
 - **Choice: direct note scheduling**, not SpessaSynth's `Sequencer`. The plan
   is already a timed, ID-carrying event list; the sequencer would require
@@ -225,7 +226,12 @@ controller over `SpessaSynthDriver` and a 25 ms `setInterval` ticker.
   never detached or changed). `workletModuleUrl` must serve the
   `spessasynth_processor.min.js` of the pinned `spessasynth_lib` (4.3.14): the
   processor and the library share a private message protocol. The adapter
-  fetches nothing else. Because only `playback-spessasynth` may import
+  fetches nothing else. The processor decodes the `.sf3` samples with
+  WebAssembly; a page CSP without `'wasm-unsafe-eval'` makes it fail without
+  any message, so the load waits at most `DEFAULT_DECODER_START_TIMEOUT_MS`
+  (15 s) for the decoder's ready report and then rejects `ASSET_LOAD_FAILED`
+  (the player's "Audio unavailable" with Retry), never a load that stays
+  pending. Because only `playback-spessasynth` may import
   SpessaSynth, its root exports what apps need to wire it (#11, #15, #16):
   `SPESSASYNTH_PROCESSOR_URL` (a Vite asset import of that file: the app's
   Vite build emits it and this is its URL, relative to the page or a `data:`

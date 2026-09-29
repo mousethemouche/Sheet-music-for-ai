@@ -4,8 +4,10 @@
  * load in Chromium without a gesture, sound after a real click, move the
  * position with the audio clock, stop, sound again, and release their audio
  * resources. Plus the adapter's own error mapping for assets that cannot
- * load. The output is only measured as a peak level (sounding or silent), no
- * waveform or audio-byte comparison.
+ * load, including a worklet whose decoder never starts (what a page policy
+ * without 'wasm-unsafe-eval' does to the pinned processor). The output is
+ * only measured as a peak level (sounding or silent), no waveform or
+ * audio-byte comparison.
  */
 import { type PlaybackEngine, compilePlaybackPlan } from '@sheet-music/playback-core';
 import { F01, parseFixture } from '@sheet-music/test-fixtures';
@@ -144,4 +146,38 @@ describe('SpessaSynth engine in Chromium', () => {
     },
     30_000,
   );
+
+  it('decoder that never starts: load rejects ASSET_LOAD_FAILED after the start timeout instead of hanging', async () => {
+    // Registers the processor under the pinned library's name but never answers,
+    // like the real processor when WebAssembly is refused by the page policy.
+    const silentProcessor = URL.createObjectURL(
+      new Blob(
+        [
+          `registerProcessor('spessasynth-worklet-processor', class extends AudioWorkletProcessor {
+            process() { return true; }
+          });`,
+        ],
+        { type: 'text/javascript' },
+      ),
+    );
+    const close = vi.spyOn(AudioContext.prototype, 'close');
+    try {
+      const current = createSpessaSynthEngine(
+        { soundFont: { url: soundFontUrl }, workletModuleUrl: silentProcessor },
+        { decoderStartTimeoutMs: 300 },
+      );
+      engine = current;
+      await expect(current.load(compilePlaybackPlan(parseFixture(F01)))).rejects.toMatchObject({
+        name: 'PlaybackError',
+        code: 'ASSET_LOAD_FAILED',
+      });
+      expect(current.getSnapshot()).toMatchObject({
+        state: 'error',
+        error: { code: 'ASSET_LOAD_FAILED' },
+      });
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      URL.revokeObjectURL(silentProcessor);
+    }
+  }, 10_000);
 });

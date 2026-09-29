@@ -9,7 +9,8 @@
  * - the same or a lower revision of that ID (duplicate or stale) is ignored;
  * - another score ID is ignored (one View shows one score).
  * A tool error, an unreadable result or a cancellation keeps the last valid
- * artifact and only sets a notice.
+ * artifact and only sets a notice. The theme follows the host's (light until
+ * the host or the system says otherwise).
  */
 import type { ScoreArtifact } from '@sheet-music/music-contracts';
 import { parseToolResult } from './tool-result';
@@ -19,10 +20,14 @@ export type ViewNotice =
   | { readonly kind: 'unreadable' }
   | { readonly kind: 'cancelled' };
 
+export type ViewTheme = 'light' | 'dark';
+
 export interface ViewState {
   readonly connection: 'connecting' | 'connected' | 'failed' | 'closed';
   readonly artifact: ScoreArtifact | null;
   readonly notice: ViewNotice | null;
+  /** Color scheme the player draws with (host context `theme`). */
+  readonly theme: ViewTheme;
 }
 
 export type ViewEvent =
@@ -30,12 +35,14 @@ export type ViewEvent =
   | { readonly type: 'connection-failed' }
   | { readonly type: 'tool-result'; readonly result: unknown }
   | { readonly type: 'tool-cancelled' }
+  | { readonly type: 'host-theme'; readonly theme: ViewTheme }
   | { readonly type: 'teardown' };
 
 export const INITIAL_VIEW_STATE: ViewState = {
   connection: 'connecting',
   artifact: null,
   notice: null,
+  theme: 'light',
 };
 
 const UNREADABLE_ERROR = {
@@ -73,8 +80,10 @@ export function reduceViewState(state: ViewState, event: ViewEvent): ViewState {
       return onToolResult(state, event.result);
     case 'tool-cancelled':
       return { ...state, notice: { kind: 'cancelled' } };
+    case 'host-theme':
+      return event.theme === state.theme ? state : { ...state, theme: event.theme };
     case 'teardown':
-      return { connection: 'closed', artifact: null, notice: null };
+      return { ...state, connection: 'closed', artifact: null, notice: null };
   }
 }
 

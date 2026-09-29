@@ -400,7 +400,9 @@ What the apps wire (#11, #15), from the package roots only:
   (a `ScoreRendererFactory`), type `VexFlowRendererOptions`,
   `loadBundledFonts`.
 - `@sheet-music/playback-spessasynth`: `createSpessaSynthEngine` (a
-  `CreatePlaybackEngine`), `SPESSASYNTH_PROCESSOR_URL`, and the #23 asset
+  `CreatePlaybackEngine`; an optional second argument
+  `SpessaSynthDriverOptions` sets the decoder start timeout, default
+  `DEFAULT_DECODER_START_TIMEOUT_MS`), `SPESSASYNTH_PROCESSOR_URL`, and the #23 asset
   API `PIANO_SOUNDFONT`, `PIANO_SOUNDFONT_DIRECTORY`, `resolvePianoAssetUrl`,
   `checkSoundFontAsset`, types `SoundFontAssetManifest`, `AssetFileReader`
   (PLAYBACK_POLICY_V1.md §7).

@@ -3,11 +3,12 @@
  * playback-core over the SpessaSynth driver, ticked by a timer.
  */
 import {
-  type CreatePlaybackEngine,
+  type PlaybackAssetConfig,
+  type PlaybackEngine,
   type PlaybackTicker,
   createPlaybackController,
 } from '@sheet-music/playback-core';
-import { SpessaSynthDriver } from './spessasynth-driver';
+import { SpessaSynthDriver, type SpessaSynthDriverOptions } from './spessasynth-driver';
 
 /**
  * Scheduling period. With the controller's 100 ms look-ahead, notes keep
@@ -22,10 +23,15 @@ const intervalTicker: PlaybackTicker = (onTick) => {
 };
 
 /**
- * Creates an engine in `idle`. `assets.workletModuleUrl` must serve the
- * `spessasynth_processor.min.js` of the pinned spessasynth_lib (4.3.14): the
- * processor and the library share a private message protocol. Apps get that
- * file as `SPESSASYNTH_PROCESSOR_URL`.
+ * Creates an engine in `idle` (a `CreatePlaybackEngine` of playback-core).
+ * `assets.workletModuleUrl` must serve the `spessasynth_processor.min.js` of
+ * the pinned spessasynth_lib (4.3.14): the processor and the library share a
+ * private message protocol. Apps get that file as
+ * `SPESSASYNTH_PROCESSOR_URL`. `options` are for tests; apps use the defaults.
  */
-export const createSpessaSynthEngine: CreatePlaybackEngine = (assets) =>
-  createPlaybackController(new SpessaSynthDriver(assets), intervalTicker);
+export function createSpessaSynthEngine(
+  assets: PlaybackAssetConfig,
+  options: SpessaSynthDriverOptions = {},
+): PlaybackEngine {
+  return createPlaybackController(new SpessaSynthDriver(assets, options), intervalTicker);
+}
