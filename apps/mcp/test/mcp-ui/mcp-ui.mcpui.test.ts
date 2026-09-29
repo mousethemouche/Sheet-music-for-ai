@@ -73,6 +73,9 @@ const ANNOTATION_TEXTS = [
 const AUDIBLE = 0.005;
 const SILENT = 0.0005;
 
+/** A computed `background-color` nothing painted (no Tailwind class applied). */
+const TRANSPARENT = 'rgba(0, 0, 0, 0)';
+
 const FRAME = { width: 760, height: 1000 } as const;
 /**
  * #root of view/index.html is `box-sizing: border-box` with 16 px side padding
@@ -170,7 +173,7 @@ afterAll(async () => {
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const sorted = (values: readonly string[] | undefined): string[] => [...(values ?? [])].sort();
 const viewState = (): Promise<ViewSnapshot> => commands.mcpUi({ action: 'view-state' });
-const click = (role: 'button' | 'checkbox' | 'link', name: string): Promise<void> =>
+const click = (role: 'button' | 'checkbox' | 'switch' | 'link', name: string): Promise<void> =>
   commands.mcpUi({ action: 'view-click', target: { role, name } });
 const peak = (view: ViewSnapshot): number =>
   view.audio.reduce((loudest, tap) => Math.max(loudest, tap.peak), 0);
@@ -334,6 +337,7 @@ describe('MCP-UI-01 boot and real create_score result', { timeout: 60_000 }, () 
       mount: { scoreId: created.scoreId, revision: '1', theme: 'light' },
       notice: null,
       documentTheme: 'light',
+      documentThemeClass: 'light',
       player: {
         label: `Score player: ${TITLE}`,
         alert: '',
@@ -342,6 +346,22 @@ describe('MCP-UI-01 boot and real create_score result', { timeout: 60_000 }, () 
         loop: { checked: false, disabled: false },
       },
     });
+  });
+
+  it("styles the player: the View's Tailwind build compiled the ui and score-ui classes", async () => {
+    // Roles and names pass on an unstyled player. A missing @source in view.css
+    // builds without error and leaves these computed styles at their defaults.
+    const { player } = await viewState();
+    const { playBackground, playBorder, controlsBackground, paperEdge } = player?.styling ?? {};
+    // The Button's primary fill (@sheet-music/ui classes and the theme tokens).
+    expect(typeof playBackground).toBe('string');
+    expect(playBackground).not.toBe(TRANSPARENT);
+    // Its (transparent) border: what forced colors repaints as the button's boundary.
+    expect(playBorder).toBe('solid 1px');
+    expect(typeof controlsBackground).toBe('string');
+    expect(controlsBackground).not.toBe(TRANSPARENT);
+    // The paper's inset edge: a class only packages/score-ui uses.
+    expect(paperEdge).toContain('inset');
   });
 
   it('loads the embedded fonts, and the worklet and SoundFont from the declared asset origin, without uncaught errors', async () => {
@@ -456,7 +476,7 @@ describe(
 
     it('plays revision 1 in a loop after a real click', async () => {
       // Looping keeps revision 1 sounding until the edit arrives; P-01 stops it anyway.
-      await click('checkbox', 'Loop');
+      await click('switch', 'Loop');
       await click('button', 'Play');
       const view = await waitForView(
         'audible playback with a highlight',
@@ -601,6 +621,8 @@ describe('MCP-UI-03 rejected edit, host context and teardown', { timeout: 60_000
     const { view: hosted } = current();
     const before = sizeEvents();
     const width = 420;
+    const light = (await viewState()).player?.styling;
+    expect(light?.controlsBackground).not.toBe(TRANSPARENT);
 
     hosted.setHostContext({
       ...hosted.hostContext(),
@@ -612,6 +634,7 @@ describe('MCP-UI-03 rejected edit, host context and teardown', { timeout: 60_000
       'the dark theme at the new width',
       (state) =>
         state.documentTheme === 'dark' &&
+        state.documentThemeClass === 'dark' &&
         state.mount?.theme === 'dark' &&
         state.notation?.width === width - (state.rootPaddingX ?? Number.NaN),
     );
@@ -620,6 +643,13 @@ describe('MCP-UI-03 rejected edit, host context and teardown', { timeout: 60_000
     expect(view.rootPaddingX).toBe(ROOT_HORIZONTAL_PADDING);
     // The narrower layout is taller: the View reports its new size.
     await expect.poll(sizeEvents).toBeGreaterThan(before);
+    // The player's chrome follows the theme through the tokens, not only its
+    // paper. Compared on the controls bar: the Play button's reading may be
+    // its hover color, and the pointer can leave it when the layout narrows.
+    const dark = view.player?.styling;
+    expect(dark?.controlsBackground).not.toBe(TRANSPARENT);
+    expect(dark?.controlsBackground).not.toBe(light?.controlsBackground);
+    expect(dark?.playBackground).not.toBe(TRANSPARENT);
   });
 
   it('on teardown releases the player and closes its audio before answering, then ignores the host', async () => {
@@ -655,7 +685,12 @@ describe('MCP-UI-03 rejected edit, host context and teardown', { timeout: 60_000
     await sleep(750);
 
     const after = await viewState();
-    expect(after).toMatchObject({ connection: 'closed', mount: null, documentTheme: 'dark' });
+    expect(after).toMatchObject({
+      connection: 'closed',
+      mount: null,
+      documentTheme: 'dark',
+      documentThemeClass: 'dark',
+    });
     expect(sizeEvents()).toBe(sizeEventsAtTeardown);
   });
 

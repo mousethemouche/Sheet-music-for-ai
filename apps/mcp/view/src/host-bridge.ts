@@ -12,18 +12,34 @@ import {
 } from '@modelcontextprotocol/ext-apps';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { flushSync } from 'react-dom';
-import type { ViewStore } from './view-state';
+import type { ViewStore, ViewTheme } from './view-state';
 
 const px = (value: number | undefined): string => (value === undefined ? '' : `${value}px`);
 
 /**
- * Applies the host context the View uses: theme, host style variables and
+ * Selects the design tokens of `theme` for the whole document: the
+ * `.light` / `.dark` class that @sheet-music/ui's theme.css keys its tokens
+ * and `color-scheme` on. The iframe's color scheme must match the host's, or
+ * the browser paints an opaque backdrop behind the View.
+ */
+export function applyThemeClass(
+  theme: ViewTheme,
+  element: HTMLElement = document.documentElement,
+): void {
+  element.classList.toggle('dark', theme === 'dark');
+  element.classList.toggle('light', theme !== 'dark');
+}
+
+/**
+ * Applies the host context the View uses: theme (the `data-theme` and
+ * `color-scheme` of ext-apps, plus the token class), host style variables and
  * fonts, display mode, and the container size (fixed or maximum width/height).
  * The player follows the root's width (its own ResizeObserver).
  */
 export function applyHostContext(context: McpUiHostContext, root: HTMLElement): void {
   if (context.theme !== undefined) {
     applyDocumentTheme(context.theme);
+    applyThemeClass(context.theme);
   }
   if (context.styles?.variables !== undefined) {
     applyHostStyleVariables(context.styles.variables, root);

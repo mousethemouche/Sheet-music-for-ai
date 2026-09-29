@@ -16,6 +16,7 @@ contracts are [RENDER_PLAYBACK_PORTS.md](RENDER_PLAYBACK_PORTS.md). Pinned:
 | `view/src/tool-result.ts`       | MCP-U01 parser: only a valid artifact reaches the player                   |
 | `view/src/view-state.ts`        | last valid artifact, notice, connection, theme                             |
 | `view/src/ScoreView.tsx`        | shell UI, notices, the score mount slot                                    |
+| `view/src/view.css`             | Tailwind CSS v4 entry: shared theme, `@source` of the View and score-ui    |
 | `view/src/asset-origin.ts`      | reads the asset origin the server injected                                 |
 | `view/src/player-ports.ts`      | the concrete ScorePlayer ports and the playback asset URLs                 |
 | `view/src/SoundCredits.tsx`     | the SoundFont attribution and license link                                 |
@@ -30,7 +31,11 @@ contracts are [RENDER_PLAYBACK_PORTS.md](RENDER_PLAYBACK_PORTS.md). Pinned:
 - `dist/view/index.html`: one self-contained document. Every script and style
   is inlined (`vite-plugin-singlefile`, its recommended config replaced by
   the equivalent explicit options so one asset can stay out); no `src`, no
-  `<link>`, no network request for code.
+  `<link>`, no network request for code. The styles are Tailwind CSS v4,
+  compiled by `@tailwindcss/vite` from `view/src/view.css`, which imports the
+  shared `@sheet-music/ui` theme and scans the View's sources and
+  `packages/score-ui/src` (DESIGN_SYSTEM.md §4): the player has no
+  stylesheet of its own.
 - `dist/view/assets/`: what the View must load by URL, served by the MCP
   server at `/assets/` (§3):
   - `spessasynth_processor.min-<hash>.js`, the pinned spessasynth_lib 4.3.14
@@ -47,15 +52,22 @@ the worklet was not emitted exactly once (`checkViewBuild` plugin), and when
 the `.sf3` does not match the manifest's size and SHA-256
 (`publishPianoSoundFont`, the same check as the web build).
 
-Size (2026-09-29): `index.html` 1,692.20 kB, 683.42 kB gzip (it was about
-700 kB before the player). Split of the inlined script, from its source map:
-VexFlow 697 kB (about 383 kB of it the embedded Bravura and Academico
-fonts), zod 350 kB (contracts, domain validation, ext-apps and SDK schemas),
-react-dom 203 kB, stb-vorbis 110 kB and spessasynth_core 85 kB (pulled in by
+Size (2026-09-29, after the shadcn/ui migration): `index.html` 1,796.87 kB,
+716.43 kB gzip, of which 33.46 kB (7.27 kB gzip) is the inlined CSS. The
+same build before the migration was 1,715.85 kB, 689.91 kB gzip (CSS 6.17 kB;
+the player's stylesheet then shipped inside the script): +81.0 kB, +26.5 kB
+gzip (+3.8 %), about +21 kB gzip of script and +5 kB of CSS. It was about
+700 kB before the player. Split of the inlined script, from its source map:
+VexFlow 714 kB (about 383 kB of it the embedded Bravura and Academico
+fonts), zod 355 kB (contracts, domain validation, ext-apps and SDK schemas),
+react-dom 208 kB, stb-vorbis 113 kB and spessasynth_core 87 kB (pulled in by
 spessasynth_lib's main-thread entry although decoding runs in the worklet),
-MCP SDK 30 kB, music-domain 27 kB, renderer-vexflow 26 kB, ext-apps 25 kB, the
-rest under 12 kB each. Out of the document: the worklet 402.59 kB and the
-SoundFont 9,182.09 kB, both cached immutably.
+MCP SDK 30 kB, renderer-vexflow 29 kB, Radix 29 kB (slider, collection,
+switch, slot, label and their hooks), music-domain 28 kB, `cn` 26 kB (class
+merging with Tailwind conflict resolution), ext-apps 25 kB, score-ui 14 kB,
+the rest under 12 kB each (`packages/ui` 5.6 kB, class-variance-authority
+0.6 kB). Out of the document: the worklet 402.59 kB and the SoundFont
+9,182.09 kB, both cached immutably.
 
 ## 2. Resource and asset origin
 
@@ -179,9 +191,18 @@ View-side change removes the WebAssembly need of the pinned processor.
 - **Audio.** Only the user's Play starts output: score-ui calls `play()` in
   the click handler and the engine resumes its AudioContext there.
 - **Theme.** The host context `theme` sets `data-theme`/`color-scheme` on the
-  document and the player theme (ScorePlayer maps it to its RenderTheme);
-  until the host sends one, the system preference is used. Host style
-  variables and fonts are applied to the root.
+  document (ext-apps `applyDocumentTheme`), the `.light` / `.dark` class
+  that selects the design tokens (`applyThemeClass`, host-bridge.ts), and
+  the player theme (ScorePlayer maps it to its RenderTheme and its paper,
+  and carries the same class). Until the host sends one, the system
+  preference is used, from the first script line; before the script runs,
+  `view.css` keeps `color-scheme: light dark`, so the frame's scheme matches
+  the host's and the browser paints no opaque backdrop. Host style
+  variables and fonts are applied to the root; the host's `--font-sans`
+  reaches the components, while its `--font-weight-*` and `--shadow-*`
+  cannot restyle them (pinned in the theme, DESIGN_SYSTEM.md §1.2). Text
+  drawn straight on the host background (title, meta, credits) prefers the
+  host's `--color-text-*` variables.
 - **Width.** `containerDimensions` sets the root's width or max width; the
   player follows its container through its own ResizeObserver and re-renders.
   The root has 16 px side padding, 8 px when the frame is 400 px wide or
@@ -212,11 +233,22 @@ Stable selectors (no CSS classes):
 | `section[aria-label^="Score player"]`                                             | the ScorePlayer (`Score player: <title>`)                                                                |
 | `[role="img"][aria-label^="Music notation"] svg`                                  | the notation; notehead groups carry `data-note-id` (also `data-harmony-id`, `data-pedal-id`...)          |
 | `svg [data-note-id] [style*="fill"]`                                              | noteheads currently highlighted by playback                                                              |
-| `[role="group"][aria-label="Playback controls"]`                                  | button `Play`/`Pause`, slider `Tempo` (`aria-valuetext`), checkbox `Loop`                                |
+| `[role="group"][aria-label="Playback controls"]`                                  | Play/Pause (the only `button` without a role), `Tempo` and `Loop` below                                  |
+| `[role="slider"]` in the controls, named `Tempo`                                  | the Radix slider's thumb: `aria-valuetext`, `aria-valuenow` (25-200, step 5), `aria-disabled`            |
+| `[role="switch"]` in the controls, named `Loop`                                   | a `button`: `aria-checked`, `disabled`; its `Label` toggles it too                                       |
 | player `[role="status"]`                                                          | `Loading`, `Ready`, `Playing`, `Paused`, `Audio unavailable`, `Notation unavailable`                     |
 | player `[role="alert"]`                                                           | player problems, `Retry audio` button                                                                    |
+| player `[data-player-viewport]`                                                   | the notation's scroll container; its parent is the paper                                                 |
 | `[data-testid="sound-credits"]`                                                   | attribution and license link                                                                             |
-| `html[data-theme]`                                                                | theme applied from the host context                                                                      |
+| `html[data-theme]`, `html.light` / `html.dark`                                    | theme applied from the host context (the class selects the design tokens)                                |
+
+Tests select roles, names and data attributes, never classes. The one
+exception is deliberate: MCP-UI-01 reads computed styles (the Play button
+and controls bar backgrounds, the Play button's 1 px border that forced
+colors paints, the paper's inset edge) of elements found through the hooks
+above, and MCP-UI-03 checks that the controls bar changes color and the
+document's `.light` / `.dark` class changes with the host theme. An unstyled player passes every role check, and
+a broken `@source` in `view.css` builds without error; these fail instead.
 
 To host it: run the MCP server with `MCP_PUBLIC_URL` on its loopback origin,
 read `ui://sheet-music/score-view`, and load the returned text in a sandboxed

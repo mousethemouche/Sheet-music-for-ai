@@ -8,7 +8,7 @@ import { ScorePlayer } from '@sheet-music/score-ui';
 import { type JSX, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { readAssetOrigin } from './asset-origin';
-import { connectToHost } from './host-bridge';
+import { applyThemeClass, connectToHost } from './host-bridge';
 import { createPlayerPorts, playbackAssetUrls } from './player-ports';
 import type { ScoreMountProps } from './score-mount';
 import { ScoreView } from './ScoreView';
@@ -45,11 +45,10 @@ function PlayerMount({ artifact, theme }: ScoreMountProps): JSX.Element {
   );
 }
 
-// Until the host sends its theme, follow the system's.
-const store = createViewStore({
-  ...INITIAL_VIEW_STATE,
-  theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
-});
+// Until the host sends its theme, follow the system's (store and document tokens).
+const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+applyThemeClass(systemTheme);
+const store = createViewStore({ ...INITIAL_VIEW_STATE, theme: systemTheme });
 // The iframe lives as long as its tool call; the host tears it down.
 connectToHost(app, store, container);
 

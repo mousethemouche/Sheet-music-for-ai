@@ -3,7 +3,8 @@
  * Playwright (`frame.evaluate`) because the host page cannot read a
  * cross-origin frame. It reads the stable hooks of MCP_VIEW.md §6 (test IDs,
  * ARIA roles and labels, `data-*` attributes of the notation), never CSS
- * classes, and the audio probe the sandbox proxy installed.
+ * classes, and the audio probe the sandbox proxy installed. The player's
+ * `styling` is read as computed styles of elements found through those hooks.
  *
  * Playwright sends the function as source: it must stay self-contained (no
  * import, no outer variable).
@@ -22,9 +23,13 @@ export function snapshotViewDocument(): ViewSnapshot {
   const notice = document.querySelector('[data-testid="view-notice"]');
   const player = document.querySelector<HTMLElement>('section[aria-label^="Score player"]');
   const controls = player?.querySelector('[role="group"][aria-label="Playback controls"]');
-  const button = controls?.querySelector('button');
-  const tempo = controls?.querySelector<HTMLInputElement>('input[type="range"]');
-  const loop = controls?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+  // The Loop switch is a <button role="switch">: Play/Pause is the button without a role.
+  const button = controls?.querySelector<HTMLButtonElement>('button:not([role])');
+  // Radix Slider: the thumb carries role="slider" and its ARIA state.
+  const tempo = controls?.querySelector<HTMLElement>('[role="slider"]');
+  const loop = controls?.querySelector<HTMLButtonElement>('[role="switch"]');
+  // The notation paper wraps the player's scroll viewport.
+  const paper = player?.querySelector('[data-player-viewport]')?.parentElement;
   const svg = player?.querySelector('[role="img"][aria-label^="Music notation"] svg');
   const heads = svg ? [...svg.querySelectorAll('[data-note-id]:not([data-scale-degree-id])')] : [];
   const credits = document.querySelector('[data-testid="sound-credits"]');
@@ -68,12 +73,34 @@ export function snapshotViewDocument(): ViewSnapshot {
             tempo:
               tempo === null || tempo === undefined
                 ? null
-                : { valueText: tempo.getAttribute('aria-valuetext'), disabled: tempo.disabled },
+                : {
+                    valueText: tempo.getAttribute('aria-valuetext'),
+                    disabled: tempo.getAttribute('aria-disabled') === 'true',
+                  },
             loop:
               loop === null || loop === undefined
                 ? null
-                : { checked: loop.checked, disabled: loop.disabled },
+                : {
+                    checked: loop.getAttribute('aria-checked') === 'true',
+                    disabled: loop.disabled,
+                  },
             text: player.innerText.replace(/\s+/g, ' ').trim(),
+            styling: {
+              playBackground:
+                button === null || button === undefined
+                  ? null
+                  : getComputedStyle(button).backgroundColor,
+              playBorder:
+                button === null || button === undefined
+                  ? null
+                  : `${getComputedStyle(button).borderTopStyle} ${getComputedStyle(button).borderTopWidth}`,
+              controlsBackground:
+                controls === null || controls === undefined
+                  ? null
+                  : getComputedStyle(controls).backgroundColor,
+              paperEdge:
+                paper === null || paper === undefined ? null : getComputedStyle(paper).boxShadow,
+            },
           },
     notation:
       svg === null || svg === undefined
@@ -92,6 +119,9 @@ export function snapshotViewDocument(): ViewSnapshot {
             ),
           },
     documentTheme: document.documentElement.getAttribute('data-theme'),
+    documentThemeClass: [...document.documentElement.classList]
+      .filter((name) => name === 'light' || name === 'dark')
+      .join(' '),
     rootWidth: root === null ? null : root.getBoundingClientRect().width,
     rootPaddingX:
       root === null
@@ -122,6 +152,7 @@ export const ABSENT_VIEW: ViewSnapshot = Object.freeze({
   player: null,
   notation: null,
   documentTheme: null,
+  documentThemeClass: '',
   rootWidth: null,
   rootPaddingX: null,
   loadedFonts: [],

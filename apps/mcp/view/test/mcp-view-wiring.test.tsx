@@ -5,7 +5,9 @@
  * postMessage, CSP and bundled player are MCP-UI-01..03; the player's own
  * behavior is score-ui (UI-01..05).
  *
- * - The host theme reaches the player and follows host context changes.
+ * - The host theme reaches the player and the document's token class
+ *   (`.light` / `.dark`, which theme.css keys its tokens and color scheme
+ *   on), and both follow host context changes.
  * - A newer revision reaches the SAME mounted player (P-01 is applied by
  *   score-ui inside one instance; a remount would lose the local tempo and
  *   loop settings and still look like P-01 from outside).
@@ -124,9 +126,13 @@ async function openView(hostContext: McpUiHostContext) {
 
 describe('MCP View wiring: host theme', () => {
   it('draws the score in the host theme and follows a theme change', async () => {
+    const html = document.documentElement;
+    // As main.tsx leaves it on a light system, before the host's context arrives.
+    html.className = 'light';
     const view = await openView({ theme: 'dark' });
     await view.deliver(successResult(draftArtifactJson()), FIXTURE_REVISION);
     expect(view.mounts.at(-1)?.theme).toBe('dark');
+    expect([...html.classList]).toEqual(['dark']);
 
     act(() => view.bridge.setHostContext({ theme: 'light' }));
 
@@ -134,7 +140,8 @@ describe('MCP View wiring: host theme', () => {
       expect(screen.getByTestId('score-mount')).toHaveAttribute('data-theme', 'light');
     });
     expect(view.mounts.at(-1)?.theme).toBe('light');
-    expect(document.documentElement.dataset['theme']).toBe('light');
+    expect(html.dataset['theme']).toBe('light');
+    expect([...html.classList]).toEqual(['light']);
   });
 });
 

@@ -25,7 +25,7 @@ export interface McpUiHarnessInfo {
 
 /** A control inside the View, found the way assistive technology finds it. */
 export type ViewClickTarget =
-  | { readonly role: 'button' | 'checkbox' | 'link'; readonly name: string }
+  | { readonly role: 'button' | 'checkbox' | 'switch' | 'link'; readonly name: string }
   | { readonly text: string };
 
 /** One request the MCP server answered on its `/assets/` route. */
@@ -83,11 +83,37 @@ export interface ViewSnapshot {
     readonly status: string;
     /** Text of the player's `role="alert"` (empty without a problem). */
     readonly alert: string;
+    /** The Play/Pause button: the only `<button>` of the controls without an ARIA role. */
     readonly playButton: { readonly name: string; readonly disabled: boolean } | null;
+    /** The Tempo slider's thumb (`role="slider"`): its `aria-valuetext` and `aria-disabled`. */
     readonly tempo: { readonly valueText: string | null; readonly disabled: boolean } | null;
+    /** The Loop switch (`role="switch"`): `aria-checked` and the button's `disabled`. */
     readonly loop: { readonly checked: boolean; readonly disabled: boolean } | null;
     /** Rendered text of the player (hidden text excluded): annotation labels, controls. */
     readonly text: string;
+    /**
+     * Computed styles that exist only when the host compiled the player's
+     * Tailwind classes (DESIGN_SYSTEM.md §4): an unstyled player passes every
+     * role and name check above, so these catch a missing `@source`.
+     */
+    readonly styling: {
+      /**
+       * Background of the Play button (`@sheet-music/ui` Button, primary
+       * token). It may be the hover color: the pointer rests where the last
+       * click left it.
+       */
+      readonly playBackground: string | null;
+      /**
+       * `border-top-style` and `-width` of the Play button, such as
+       * `solid 1px`: the boundary forced colors (Windows High Contrast)
+       * repaints when it removes the primary fill.
+       */
+      readonly playBorder: string | null;
+      /** Background of the controls bar: a token surface with no hover or transition. */
+      readonly controlsBackground: string | null;
+      /** `box-shadow` of the notation paper: its inset edge, a class only score-ui uses. */
+      readonly paperEdge: string | null;
+    };
   } | null;
   readonly notation: {
     /** `width` attribute of the notation SVG. */
@@ -103,6 +129,11 @@ export interface ViewSnapshot {
   } | null;
   /** `data-theme` of the View document. */
   readonly documentTheme: string | null;
+  /**
+   * The token classes (`light`, `dark`) on the View document, space
+   * separated: theme.css keys its tokens and color scheme on them.
+   */
+  readonly documentThemeClass: string;
   /** Rendered width of the View root, in CSS px. */
   readonly rootWidth: number | null;
   /** Computed left + right padding of the View root, in CSS px (it depends on the width). */
