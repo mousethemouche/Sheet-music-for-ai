@@ -1,0 +1,37 @@
+{
+  "file": "ms-basic-grand-piano.sf3",
+  "format": "sf3",
+  "sizeBytes": 9182098,
+  "sha256": "c8168330092e0e808a0927943400f4a3d7204a1e063b204c4869477ec872bc1d",
+  "preset": { "bankMSB": 0, "bankLSB": 0, "program": 0, "name": "Grand Piano" },
+  "source": {
+    "name": "MS Basic.sf3",
+    "version": "0.2.0",
+    "sizeBytes": 51278610,
+    "sha256": "5ea2375e8bd7d8e71def1036978c1621e85b66934169b6a2744b27b9b3c2d99c",
+    "url": "https://raw.githubusercontent.com/musescore/MuseScore/25f0d24530ad7e10243b4671519c9168fc83a545/share/sound/MS%20Basic.sf3",
+    "provenance": "Default SoundFont of MuseScore Studio 4, file share/sound/MS Basic.sf3 of github.com/musescore/MuseScore at commit 25f0d24530ad7e10243b4671519c9168fc83a545 (git blob 5be56b2fafa5eee347256cbe0d2fbfacd01702b6). The copy used was the one installed by MuseScore Studio 4.6.5 for macOS, byte-identical to that blob."
+  },
+  "license": {
+    "spdx": "MIT",
+    "file": "LICENSE.txt",
+    "sha256": "9486e6baeb3eb274cd3f0e131cf1bc50ac4b57f548791b1b6678def7988f19d4",
+    "url": "https://raw.githubusercontent.com/musescore/MuseScore/25f0d24530ad7e10243b4671519c9168fc83a545/share/sound/MS%20Basic_License.md",
+    "notice": "NOTICE.txt"
+  },
+  "requiredNotices": [
+    "FluidR3 (original version) by Frank Wen Copyright (c) 2000-02",
+    "Mono conversion (FluidR3Mono) by Michael Cowgill Copyright (c) 2014-17",
+    "Adaptation for MuseScore_General.sf2 by S. Christian Collins Copyright (c) 2018-19",
+    "Temple Blocks instrument provided by Ethan Winer Copyright (c) 2002",
+    "Drumline Cymbals provided by Michael Schorsch Copyright (c) 2016",
+    "Mono version: Copyright (c) 2014-16 Michael Cowgill",
+    "Copyright (c) 2000-2002, 2008 Frank Wen <getfrank@gmail.com>"
+  ],
+  "attribution": "Piano sound: \"Grand Piano\" from the MS Basic SoundFont v0.2.0 of MuseScore Studio, MIT License. FluidR3 (original version) by Frank Wen Copyright (c) 2000-02. Mono conversion (FluidR3Mono) by Michael Cowgill Copyright (c) 2014-17. Adaptation for MuseScore_General.sf2 by S. Christian Collins Copyright (c) 2018-19. Temple Blocks instrument provided by Ethan Winer Copyright (c) 2002. Drumline Cymbals provided by Michael Schorsch Copyright (c) 2016. Mono version: Copyright (c) 2014-16 Michael Cowgill. Copyright (c) 2000-2002, 2008 Frank Wen <getfrank@gmail.com>. Piano samples: AKAI \"Splendid Grand\", public domain.",
+  "extraction": {
+    "script": "scripts/extract-grand-piano.mjs",
+    "command": "node assets/soundfonts/piano/scripts/extract-grand-piano.mjs \"<path to MS Basic.sf3>\"",
+    "tool": "spessasynth_core 4.3.22"
+  }
+}

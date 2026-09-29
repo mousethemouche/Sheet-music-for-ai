@@ -1,0 +1,26 @@
+Sheet Music for AI - piano SoundFont notice
+
+ms-basic-grand-piano.sf3 is a derivative work of "MS Basic.sf3" v0.2.0, the
+default SoundFont of MuseScore Studio 4, from
+https://github.com/musescore/MuseScore/tree/25f0d24530ad7e10243b4671519c9168fc83a545/share/sound
+It contains only preset 000:000 "Grand Piano" with its 4 instruments and 144
+samples. They were copied unchanged, including the original Ogg Vorbis sample
+data, by scripts/extract-grand-piano.mjs. Nothing else was modified.
+
+MS Basic is released under the MIT license. Its complete license file
+("MS Basic_License.md") is reproduced unchanged in LICENSE.txt, which states
+that its acknowledgements and copyright notices must be included in any
+derivative work:
+
+FluidR3 (original version) by Frank Wen Copyright (c) 2000-02
+Mono conversion (FluidR3Mono) by Michael Cowgill Copyright (c) 2014-17
+Adaptation for MuseScore_General.sf2 by S. Christian Collins Copyright (c) 2018-19
+Temple Blocks instrument provided by Ethan Winer Copyright (c) 2002
+Drumline Cymbals provided by Michael Schorsch Copyright (c) 2016
+Mono version: Copyright (c) 2014-16 Michael Cowgill
+Copyright (c) 2000-2002, 2008 Frank Wen <getfrank@gmail.com>
+
+Piano samples: "Splendid Grand" (Steinway Model D, close-mic) samples made by
+AKAI for the AKAI S5000 sampler, edited by S. Christian Collins. The upstream
+sample list (MuseScore_General_Sample_Sources.csv, MuseScore_General v0.2)
+records their original license as "Public Domain (confirmed via AKAI rep.)".
