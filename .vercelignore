@@ -1,0 +1,25 @@
+# Files a Vercel CLI deployment never uploads (docs/deploy/VERCEL.md §6).
+# The CLI reads this file in the directory it deploys (the repository root,
+# for all three projects) and does NOT read .gitignore; its own defaults
+# already skip node_modules, .git, .vercel, .env.local and .env.*.local.
+# Vercel builds every app from source, so local output is never needed.
+# DEPLOY-01 (tools/deploy/deploy-01.int.test.ts) checks these rules.
+
+# Build and test output
+dist/
+coverage/
+*.tsbuildinfo
+.vite/
+.vitest/
+.vitest-attachments/
+__screenshots__/
+test-results/
+playwright-report/
+
+# Environment files and local tool state
+.env
+.env.*
+!.env.example
+supabase/.temp/
+supabase/.branches/
+*.log

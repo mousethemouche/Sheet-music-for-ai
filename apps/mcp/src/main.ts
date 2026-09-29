@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createPostgresPersistence } from '@sheet-music/persistence-postgres';
+import { createPostgresPersistence, databaseTls } from '@sheet-music/persistence-postgres';
 import { type Logger, createLogger } from '@sheet-music/server-common';
 import { createMcpApp } from './composition';
 import { type McpConfig, McpConfigError, loadMcpConfig } from './config';
@@ -34,6 +34,7 @@ function start(logger: Logger): void {
   const assets = createViewAssetsRouter(join(dirname(viewPath), 'assets'));
   const persistence = createPostgresPersistence({
     connectionString: config.databaseUrl,
+    ...databaseTls(config.databaseCaCert),
     onIdleError: (error) => logger.warn('db.idle_connection_error', { error }),
   });
   const { app, resource, metadataUrl } = createMcpApp({

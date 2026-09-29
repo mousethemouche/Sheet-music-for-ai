@@ -17,7 +17,8 @@
     "test": "vitest run --project unit --project component",
     "test:integration": "vitest run --project integration",
     "test:mcp-ui": "vitest run --project mcp-ui",
-    "check:arch": "depcruise apps packages --config .dependency-cruiser.cjs && vitest run --project architecture"
+    "check:arch": "depcruise apps packages --config .dependency-cruiser.cjs && vitest run --project architecture",
+    "check:deploy": "vitest run --config tools/deploy/vitest.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

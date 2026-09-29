@@ -2,9 +2,10 @@
  * Production composition: the API over PostgreSQL (persistence-postgres) for
  * a validated configuration. The pool opens connections lazily, so building
  * the app never waits on the database, and it is ended when the app closes.
+ * With DATABASE_CA_CERT every connection is verified TLS (DATABASE.md §10.2).
  */
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { createPostgresPersistence } from '@sheet-music/persistence-postgres';
+import { createPostgresPersistence, databaseTls } from '@sheet-music/persistence-postgres';
 import { type Logger, createLogger } from '@sheet-music/server-common';
 import { createApiApp } from './app';
 import type { ApiConfig } from './config';
@@ -15,6 +16,7 @@ export async function bootstrapApi(
 ): Promise<NestExpressApplication> {
   const persistence = createPostgresPersistence({
     connectionString: config.databaseUrl,
+    ...databaseTls(config.databaseCaCert),
     onIdleError: (error) => logger.warn('database.idle_connection_error', { error }),
   });
   if (config.allowedOrigins.length === 0) {

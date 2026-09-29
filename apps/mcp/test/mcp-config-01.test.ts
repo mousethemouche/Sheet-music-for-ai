@@ -8,7 +8,10 @@
  *   database password, a URL) appears in the error.
  * - The interim audience is only the exact explicit value; anything else is
  *   refused, never a fallback to a weaker check.
+ * - A database outside the loopback host needs DATABASE_CA_CERT (verified
+ *   TLS), and DATABASE_URL carries no TLS parameter (DATABASE.md §10.2).
  */
+import { TEST_DATABASE_CA_CERT } from '@sheet-music/persistence-postgres/testing';
 import { describe, expect, it } from 'vitest';
 import { McpConfigError, loadMcpConfig } from '../src/config';
 
@@ -16,6 +19,7 @@ const VALID = {
   MCP_PUBLIC_URL: 'HTTPS://MCP.Example.com/mcp',
   SUPABASE_URL: 'https://abcdefghijklmnop.supabase.co',
   DATABASE_URL: 'postgresql://server_role:db-password-123@db.example.com:6543/postgres',
+  DATABASE_CA_CERT: TEST_DATABASE_CA_CERT,
 };
 
 function problemsOf(env: Record<string, string>): readonly string[] {
@@ -36,6 +40,7 @@ describe('MCP-CONFIG-01 a complete environment', () => {
       publicUrl: 'https://mcp.example.com/mcp',
       supabaseUrl: VALID.SUPABASE_URL,
       databaseUrl: VALID.DATABASE_URL,
+      databaseCaCert: TEST_DATABASE_CA_CERT.trim(),
       allowedOrigins: [],
       audienceMode: 'resource',
       trustProxyHops: 0,
@@ -95,6 +100,30 @@ describe('MCP-CONFIG-01 invalid environments fail by variable name, without valu
     expect(problems[0]).toMatch(new RegExp(`^${name} `));
     expect(message).not.toContain(value);
     expect(message).not.toContain('db-password-123');
+  });
+
+  it('requires DATABASE_CA_CERT outside the loopback host and refuses TLS parameters in the URL', () => {
+    const withoutCa = {
+      MCP_PUBLIC_URL: VALID.MCP_PUBLIC_URL,
+      SUPABASE_URL: VALID.SUPABASE_URL,
+      DATABASE_URL: VALID.DATABASE_URL,
+    };
+
+    expect(
+      problemsOf({ ...withoutCa, DATABASE_URL: `${VALID.DATABASE_URL}?sslmode=require` }),
+    ).toEqual([
+      'DATABASE_URL must not carry TLS parameters (sslmode, sslrootcert, ...): TLS is set by DATABASE_CA_CERT, which URL parameters would override.',
+      'DATABASE_CA_CERT is required for a database outside the loopback host: the PEM certificate of the database CA, for verified TLS.',
+    ]);
+    expect(problemsOf({ ...VALID, DATABASE_CA_CERT: 'db-password-123' })).toEqual([
+      'DATABASE_CA_CERT must be a PEM certificate.',
+    ]);
+    expect(
+      loadMcpConfig({
+        ...withoutCa,
+        DATABASE_URL: 'postgres://user@127.0.0.1:5432/sheet_music_test',
+      }).databaseCaCert,
+    ).toBeUndefined();
   });
 
   it.each(['authenticated', 'RESOURCE', 'none', 'interim'])(

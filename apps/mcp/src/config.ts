@@ -5,6 +5,7 @@
  * a project URL) never appear in an error message or a log line.
  */
 import { canonicalResourceUri, supabaseAuthEndpoints } from '@sheet-music/auth-jwt';
+import { databaseTlsProblems } from '@sheet-music/persistence-postgres';
 import { MCP_PATH } from './app';
 
 /**
@@ -32,8 +33,10 @@ export interface McpAppConfig {
 }
 
 export interface McpConfig extends McpAppConfig {
-  /** Server login role (member of score_owner). Secret: never logged. */
+  /** Server login role (member of score_owner), without TLS parameters. Secret: never logged. */
   readonly databaseUrl: string;
+  /** PEM CA of the database server: verified TLS (DATABASE.md §10.2). Absent: a loopback database. */
+  readonly databaseCaCert?: string;
   readonly port: number;
   /** The built single-file View; undefined: `dist/view/index.html` next to the bundle. */
   readonly viewHtmlPath?: string;
@@ -114,8 +117,11 @@ export function loadMcpConfig(env: McpEnvironment): McpConfig {
   }
 
   const databaseUrl = required('DATABASE_URL') ?? '';
+  const databaseCaCert = present(env, 'DATABASE_CA_CERT');
   if (databaseUrl !== '' && !isPostgresUrl(databaseUrl)) {
     problems.push('DATABASE_URL must be a postgres:// or postgresql:// URL.');
+  } else if (databaseUrl !== '') {
+    problems.push(...databaseTlsProblems(databaseUrl, databaseCaCert));
   }
 
   const allowedOrigins = (present(env, 'MCP_ALLOWED_ORIGINS') ?? '')
@@ -154,6 +160,7 @@ export function loadMcpConfig(env: McpEnvironment): McpConfig {
     publicUrl,
     supabaseUrl,
     databaseUrl,
+    ...(databaseCaCert === undefined ? {} : { databaseCaCert }),
     allowedOrigins,
     audienceMode,
     trustProxyHops,

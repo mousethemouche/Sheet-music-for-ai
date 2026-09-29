@@ -5,7 +5,12 @@
  * - SUPABASE_URL (required): the Supabase project URL; the token issuer and
  *   JWKS URL are derived from it. No secret is needed to verify tokens.
  * - DATABASE_URL (required): postgres URL of the server login role (a member
- *   of score_owner, DATABASE.md). A secret: never logged or echoed.
+ *   of score_owner, DATABASE.md). A secret: never logged or echoed. It
+ *   carries no TLS parameter (sslmode, ...).
+ * - DATABASE_CA_CERT (required unless the database is on the loopback host):
+ *   PEM certificate of the database CA (on Supabase, the project's root
+ *   certificate). Every connection is then TLS, verified against it
+ *   (DATABASE.md §10.2). Public, not a secret.
  * - API_ALLOWED_ORIGINS (optional): comma-separated exact browser origins
  *   allowed to call the API (the web app). Default: none.
  * - PORT (optional): listening port, default 3000.
@@ -15,6 +20,7 @@
  * into the logs.
  */
 import { supabaseAuthEndpoints } from '@sheet-music/auth-jwt';
+import { databaseTlsProblems } from '@sheet-music/persistence-postgres';
 import { originPolicy } from '@sheet-music/server-common';
 
 export const DEFAULT_PORT = 3000;
@@ -22,6 +28,8 @@ export const DEFAULT_PORT = 3000;
 export interface ApiConfig {
   readonly supabaseUrl: string;
   readonly databaseUrl: string;
+  /** PEM CA of the database server: verified TLS. Absent: a loopback database. */
+  readonly databaseCaCert?: string;
   readonly allowedOrigins: readonly string[];
   readonly port: number;
 }
@@ -62,6 +70,7 @@ export function loadApiConfig(env: Environment): ApiConfig {
   }
 
   const databaseUrl = present(env, 'DATABASE_URL');
+  const databaseCaCert = present(env, 'DATABASE_CA_CERT');
   if (databaseUrl === undefined) {
     problems.push('DATABASE_URL is required.');
   } else if (
@@ -69,6 +78,8 @@ export function loadApiConfig(env: Environment): ApiConfig {
     !['postgres:', 'postgresql:'].includes(new URL(databaseUrl).protocol)
   ) {
     problems.push('DATABASE_URL must be a postgres:// or postgresql:// connection URL.');
+  } else {
+    problems.push(...databaseTlsProblems(databaseUrl, databaseCaCert));
   }
 
   const allowedOrigins = (present(env, 'API_ALLOWED_ORIGINS') ?? '')
@@ -92,5 +103,11 @@ export function loadApiConfig(env: Environment): ApiConfig {
   if (problems.length > 0 || supabaseUrl === undefined || databaseUrl === undefined) {
     throw new ApiConfigError(problems);
   }
-  return { supabaseUrl, databaseUrl, allowedOrigins, port };
+  return {
+    supabaseUrl,
+    databaseUrl,
+    ...(databaseCaCert === undefined ? {} : { databaseCaCert }),
+    allowedOrigins,
+    port,
+  };
 }
