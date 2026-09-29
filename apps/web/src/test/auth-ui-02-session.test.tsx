@@ -6,7 +6,7 @@
  * sees account A, even when A's restore or token refresh arrives late. The
  * provider subscription ends with the app.
  */
-import { act, screen } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { AuthSession } from '../auth/authPort';
 import { createPrivateStateRegistry } from '../auth/privateState';
@@ -100,6 +100,11 @@ describe('AUTH-UI-02 private state', () => {
       'We could not reach the server. Check your connection and try again.',
     );
     expect(screen.getByRole('heading', { name: 'Your library' })).toBeInTheDocument();
+
+    // It sits in the page, not over it, and can be dismissed.
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeEnabled();
   });
 
   it('clears A’s private state and shows only B when another account signs in', async () => {
@@ -159,5 +164,44 @@ describe('AUTH-UI-02 private state', () => {
     expect(port.subscriberCount).toBe(0);
     port.emit('signed-in', sessionOf(BOB));
     expect(clearScoreCache).not.toHaveBeenCalled();
+  });
+});
+
+describe('AUTH-UI-02 account navigation', () => {
+  const nav = () => within(screen.getByRole('navigation', { name: 'Account' }));
+
+  it.each([
+    { path: '/login', heading: 'Sign in', links: ['Create account'] },
+    { path: '/signup', heading: 'Create an account', links: ['Sign in'] },
+    {
+      path: '/forgot-password',
+      heading: 'Reset your password',
+      links: ['Sign in', 'Create account'],
+    },
+  ])(
+    'signed out on $path, the header offers only what the page does not',
+    async ({ path, heading, links }) => {
+      renderApp({ port: new FakeAuthPort(null), path });
+
+      expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
+      expect(
+        nav()
+          .getAllByRole('link')
+          .map((link) => link.textContent),
+      ).toEqual(links);
+    },
+  );
+
+  it('shows the account email in the header except on pages that already show it', async () => {
+    const { user } = renderApp({ port: new FakeAuthPort(sessionOf(ALICE)), path: '/library' });
+    const email = String(ALICE.email);
+
+    expect(await screen.findByText(`Signed in as ${ALICE.email}.`)).toBeInTheDocument();
+    expect(nav().queryByText(email)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('link', { name: 'About and credits' }));
+
+    expect(await screen.findByRole('heading', { name: 'Credits' })).toBeInTheDocument();
+    expect(nav().getByText(email)).toBeInTheDocument();
   });
 });

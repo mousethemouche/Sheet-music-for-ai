@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent, type JSX } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
+import { Alert } from '../shell/Alert';
+import { AuthCard } from './AuthCard';
 import type { AuthRedirectResult } from './authPort';
 import { useAuth } from './AuthProvider';
 import { FormError, TextField, emailError, usePendingAction } from './forms';
@@ -45,10 +47,28 @@ export function SignInPage(): JSX.Element {
   };
 
   return (
-    <section aria-labelledby="sign-in-title">
-      <h1 id="sign-in-title">Sign in</h1>
-      {linkError && <p role="alert">{linkError}</p>}
-      <form noValidate onSubmit={submit}>
+    <AuthCard
+      titleId="sign-in-title"
+      title="Sign in"
+      subtitle="Open your library of saved scores."
+      links={
+        <>
+          <p>
+            <Link className="ui-link" to="/forgot-password">
+              Forgot your password?
+            </Link>
+          </p>
+          <p>
+            No account yet?{' '}
+            <Link className="ui-link" to={withReturnPath('/signup', returnPath)}>
+              Create an account
+            </Link>
+          </p>
+        </>
+      }
+    >
+      {linkError && <Alert tone="error">{linkError}</Alert>}
+      <form noValidate onSubmit={submit} className="ui-form">
         <TextField
           label="Email"
           name="email"
@@ -68,17 +88,15 @@ export function SignInPage(): JSX.Element {
           error={fieldErrors.password}
         />
         <FormError message={error} />
-        <button type="submit" disabled={pending}>
+        <button
+          type="submit"
+          className="ui-button ui-button--primary ui-button--block"
+          disabled={pending}
+        >
           {pending ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
-      <p>
-        <Link to="/forgot-password">Forgot your password?</Link>
-      </p>
-      <p>
-        No account yet? <Link to={withReturnPath('/signup', returnPath)}>Create an account</Link>
-      </p>
-    </section>
+    </AuthCard>
   );
 }
 

@@ -9,7 +9,7 @@ import type { SoundCredits } from './webPlayer';
 export function CreditsPage(props: { credits: SoundCredits }): JSX.Element {
   const { credits } = props;
   return (
-    <section aria-labelledby="about-title">
+    <section aria-labelledby="about-title" className="ui-prose">
       <h1 id="about-title">About Sheet Music for AI</h1>
       <p>
         An AI assistant writes piano scores you can read and play in the conversation, and you
@@ -21,7 +21,9 @@ export function CreditsPage(props: { credits: SoundCredits }): JSX.Element {
       <p>
         <a href={credits.licenseUrl}>License (MIT)</a> · <a href={credits.noticeUrl}>Notice</a>
       </p>
-      <p>MuseScore is named only as the source of this sound; it does not endorse this app.</p>
+      <p className="ui-muted">
+        MuseScore is named only as the source of this sound; it does not endorse this app.
+      </p>
     </section>
   );
 }

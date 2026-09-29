@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type JSX } from 'react';
 import { useSearchParams } from 'react-router';
+import { LoadingState } from '../shell/LoadingState';
+import { AuthCard } from './AuthCard';
 import type { AuthErrorCode, OAuthAuthorizationRequest, OAuthDecision } from './authPort';
 import { useAuth } from './AuthProvider';
 import { FormError, usePendingAction } from './forms';
@@ -29,7 +31,7 @@ export function OAuthConsentPage(props: { leaveApp: LeaveApp }): JSX.Element {
   const [searchParams] = useSearchParams();
   const authorizationId = searchParams.get('authorization_id') ?? '';
 
-  if (state.status !== 'signed-in') return <p role="status">Checking your session…</p>;
+  if (state.status !== 'signed-in') return <LoadingState>Checking your session…</LoadingState>;
   if (!authorizationId) return <ConsentError message={INVALID_REQUEST} />;
 
   // A different account or request starts from a clean state.
@@ -85,8 +87,11 @@ function AuthorizationRequest(props: {
     };
   }, [port, authorizationId, leave]);
 
-  if (view.kind === 'loading') return <p role="status">Loading the authorization request…</p>;
-  if (view.kind === 'redirecting') return <p role="status">Returning to the application…</p>;
+  if (view.kind === 'loading') {
+    return <LoadingState>Loading the authorization request…</LoadingState>;
+  }
+  if (view.kind === 'redirecting')
+    return <LoadingState>Returning to the application…</LoadingState>;
   if (view.kind === 'error') return <ConsentError message={view.message} />;
 
   const { request } = view;
@@ -100,37 +105,57 @@ function AuthorizationRequest(props: {
     });
 
   return (
-    <section aria-labelledby="consent-title">
-      <h1 id="consent-title">Allow {clientName} to use your account?</h1>
-      {props.accountEmail && <p>Signed in as {props.accountEmail}.</p>}
+    <AuthCard
+      titleId="consent-title"
+      title={`Allow ${clientName} to use your account?`}
+      subtitle={props.accountEmail && <>Signed in as {props.accountEmail}.</>}
+      icon={{ name: 'shield' }}
+    >
       <p>
         {clientName}
         {request.clientUri && ` (${request.clientUri})`} wants to use Sheet Music for AI as you:
         create, edit, save and search your scores. It asks to:
       </p>
-      <ul aria-label="Requested permissions">
+      <ul aria-label="Requested permissions" className="ui-scope-list">
         {request.scopes.map((scope) => (
           <li key={scope}>{SCOPE_LABELS[scope] ?? scope}</li>
         ))}
       </ul>
-      <p>After you decide, you return to {request.redirectUri}.</p>
+      <p className="ui-small ui-muted app-break">
+        After you decide, you return to {request.redirectUri}.
+      </p>
       <FormError message={error} />
-      <button type="button" disabled={pending} onClick={() => decide('approve')}>
-        Allow
-      </button>{' '}
-      <button type="button" disabled={pending} onClick={() => decide('deny')}>
-        Deny
-      </button>
-    </section>
+      <div className="ui-actions ui-actions--stretch">
+        <button
+          type="button"
+          className="ui-button ui-button--primary"
+          disabled={pending}
+          onClick={() => decide('approve')}
+        >
+          Allow
+        </button>
+        <button
+          type="button"
+          className="ui-button ui-button--secondary"
+          disabled={pending}
+          onClick={() => decide('deny')}
+        >
+          Deny
+        </button>
+      </div>
+    </AuthCard>
   );
 }
 
 function ConsentError(props: { message: string }): JSX.Element {
   return (
-    <section aria-labelledby="consent-title">
-      <h1 id="consent-title">Authorization request</h1>
+    <AuthCard
+      titleId="consent-title"
+      title="Authorization request"
+      icon={{ name: 'alert', tone: 'danger' }}
+    >
       <p role="alert">{props.message}</p>
-    </section>
+    </AuthCard>
   );
 }
 

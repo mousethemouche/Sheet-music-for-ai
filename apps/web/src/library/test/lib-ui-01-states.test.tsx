@@ -111,13 +111,32 @@ describe('LIB-UI-01 library states', () => {
   it('tells a genuinely empty library apart from a search without match', async () => {
     const http = new FakeHttp();
     http.respond = () => json(200, listBody([]));
-    const { user } = renderLibrary({ http });
+    renderLibrary({ http });
 
     expect(await screen.findByText(EMPTY_TEXT)).toBeInTheDocument();
     expect(status()).toHaveTextContent(EMPTY_TEXT);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    // Nothing to search yet: the empty state replaces the search form.
+    expect(screen.queryByRole('search', { name: 'Search your library' })).not.toBeInTheDocument();
+  });
 
-    await user.type(screen.getByRole('searchbox', { name: 'Search titles and tags' }), 'fugue');
+  it('shows a search without match as such, never as an empty library', async () => {
+    const http = new FakeHttp();
+    http.respond = (request) =>
+      json(
+        200,
+        listBody(
+          request.url.searchParams.has('query')
+            ? []
+            : [summary({ scoreId: SCORE_ID, title: 'C major warm-up' })],
+        ),
+      );
+    const { user } = renderLibrary({ http });
+
+    await user.type(
+      await screen.findByRole('searchbox', { name: 'Search titles and tags' }),
+      'fugue',
+    );
     await user.click(screen.getByRole('button', { name: 'Search' }));
 
     expect(await screen.findByText(NO_MATCH_TEXT)).toBeInTheDocument();
@@ -257,6 +276,8 @@ describe('LIB-UI-01 saved score states', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('This score is not in your library.');
     expect(http.requests.map((request) => request.url.pathname)).toEqual(['/scores/scr_missing']);
+    // The way back is offered once, by the not-found state itself.
+    expect(screen.getAllByRole('link', { name: 'Back to your library' })).toHaveLength(1);
 
     await user.click(within(alert).getByRole('link', { name: 'Back to your library' }));
 

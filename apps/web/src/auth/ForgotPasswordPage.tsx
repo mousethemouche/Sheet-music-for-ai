@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type JSX } from 'react';
 import { Link } from 'react-router';
+import { AuthCard } from './AuthCard';
 import type { AuthErrorCode } from './authPort';
 import { useAuth } from './AuthProvider';
 import { FormError, TextField, emailError, usePendingAction } from './forms';
@@ -25,16 +26,22 @@ export function ForgotPasswordPage(): JSX.Element {
 
   if (sentTo) {
     return (
-      <section aria-labelledby="forgot-title">
-        <h1 id="forgot-title">Check your email</h1>
+      <AuthCard
+        titleId="forgot-title"
+        title="Check your email"
+        icon={{ name: 'mail' }}
+        links={
+          <Link className="ui-button ui-button--secondary ui-button--block" to="/login">
+            Back to sign in
+          </Link>
+        }
+      >
         {/* Same text whether or not the address has an account: no enumeration. */}
         <p role="status">
-          If an account exists for {sentTo}, we sent it a link to choose a new password.
+          If an account exists for <strong>{sentTo}</strong>, we sent it a link to choose a new
+          password.
         </p>
-        <p>
-          <Link to="/login">Back to sign in</Link>
-        </p>
-      </section>
+      </AuthCard>
     );
   }
 
@@ -56,12 +63,19 @@ export function ForgotPasswordPage(): JSX.Element {
   };
 
   return (
-    <section aria-labelledby="forgot-title">
-      <h1 id="forgot-title">Reset your password</h1>
-      <p>
-        Enter the email address of your account. We will send you a link to choose a new password.
-      </p>
-      <form noValidate onSubmit={submit}>
+    <AuthCard
+      titleId="forgot-title"
+      title="Reset your password"
+      subtitle="Enter the email address of your account. We will send you a link to choose a new password."
+      links={
+        <p>
+          <Link className="ui-link" to="/login">
+            Back to sign in
+          </Link>
+        </p>
+      }
+    >
+      <form noValidate onSubmit={submit} className="ui-form">
         <TextField
           label="Email"
           name="email"
@@ -72,13 +86,14 @@ export function ForgotPasswordPage(): JSX.Element {
           error={fieldError}
         />
         <FormError message={error} />
-        <button type="submit" disabled={pending}>
+        <button
+          type="submit"
+          className="ui-button ui-button--primary ui-button--block"
+          disabled={pending}
+        >
           {pending ? 'Sending…' : 'Send reset link'}
         </button>
       </form>
-      <p>
-        <Link to="/login">Back to sign in</Link>
-      </p>
-    </section>
+    </AuthCard>
   );
 }

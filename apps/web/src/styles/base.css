@@ -1,0 +1,1123 @@
+/*
+ * Base stylesheet of the web app: a light reset, typography, focus and motion
+ * rules, and the `.ui-*` primitives pages compose (docs/architecture/
+ * DESIGN_SYSTEM.md lists every class). Colors and sizes come from tokens.css
+ * only. Imported once, by main.tsx.
+ */
+@import './tokens.css';
+
+/* ---------------------------------------------------------------- reset */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background-color: var(--ui-bg);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scrollbar-gutter: stable;
+}
+
+body {
+  margin: 0;
+  background-color: var(--ui-bg);
+  color: var(--ui-text);
+  font-family: var(--ui-font-sans);
+  font-size: var(--ui-text-base);
+  line-height: var(--ui-leading);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* The app shell (header, main, footer) fills the viewport; main grows. */
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+ul,
+ol,
+dl,
+dd,
+figure,
+blockquote {
+  margin: 0;
+}
+
+img,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* ----------------------------------------------------------- typography */
+
+h1,
+h2,
+h3,
+h4 {
+  font-weight: var(--ui-weight-semibold);
+  line-height: var(--ui-leading-tight);
+  letter-spacing: var(--ui-tracking-tight);
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: var(--ui-text-xl);
+  letter-spacing: var(--ui-tracking-title);
+}
+
+h2 {
+  font-size: var(--ui-text-lg);
+}
+
+h3,
+h4 {
+  font-size: var(--ui-text-base);
+}
+
+p {
+  text-wrap: pretty;
+}
+
+a {
+  color: var(--ui-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+}
+
+a:hover {
+  color: var(--ui-accent-hover);
+  text-decoration-color: currentColor;
+}
+
+code {
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--ui-border);
+  border-radius: 4px;
+  background-color: var(--ui-surface);
+  font-family: var(--ui-font-mono);
+  font-size: 0.875em;
+  overflow-wrap: anywhere;
+}
+
+time,
+.ui-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------ focus and motion */
+
+:focus-visible {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ------------------------------------------------------------ utilities */
+
+.ui-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ui-muted {
+  color: var(--ui-text-muted);
+}
+
+.ui-small {
+  font-size: var(--ui-text-sm);
+}
+
+.ui-list-reset {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Vertical rhythm by gap, never by margins: 16 px by default. */
+.ui-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-4);
+}
+
+.ui-stack--xs {
+  gap: var(--ui-space-1);
+}
+
+.ui-stack--sm {
+  gap: var(--ui-space-2);
+}
+
+.ui-stack--md {
+  gap: var(--ui-space-3);
+}
+
+.ui-stack--lg {
+  gap: var(--ui-space-5);
+}
+
+.ui-stack--xl {
+  gap: var(--ui-space-6);
+}
+
+/* A wrapping row of items (buttons, chips, meta). */
+.ui-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-space-2);
+}
+
+.ui-cluster--between {
+  justify-content: space-between;
+}
+
+.ui-grow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Long-form text (About page): paragraph spacing restored. */
+.ui-prose {
+  max-width: 68ch;
+}
+
+.ui-prose > * + * {
+  margin-top: var(--ui-space-3);
+}
+
+.ui-prose > h2 {
+  margin-top: var(--ui-space-6);
+}
+
+.ui-prose > h3 {
+  margin-top: var(--ui-space-5);
+}
+
+/* ------------------------------------------------------------ app shell */
+
+.ui-container {
+  width: 100%;
+  max-width: calc(var(--ui-container-width) + 2 * var(--ui-gutter));
+  margin-inline: auto;
+  padding-inline: var(--ui-gutter);
+}
+
+.ui-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex: none;
+  height: var(--ui-header-height);
+  border-bottom: 1px solid var(--ui-border);
+  background-color: var(--ui-header-bg);
+  -webkit-backdrop-filter: saturate(180%) blur(8px);
+  backdrop-filter: saturate(180%) blur(8px);
+}
+
+.ui-header__inner {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-4);
+  height: 100%;
+}
+
+.ui-header__end {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-3);
+  min-width: 0;
+  margin-left: auto;
+}
+
+.ui-header__email {
+  overflow: hidden;
+  max-width: 28ch;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .ui-header__email {
+    display: none;
+  }
+}
+
+.ui-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+  min-height: 40px;
+  border-radius: 6px;
+  color: var(--ui-text);
+  font-weight: var(--ui-weight-semibold);
+  letter-spacing: var(--ui-tracking-tight);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.ui-brand:hover {
+  color: var(--ui-text);
+}
+
+.ui-brand__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background-color: var(--ui-accent);
+  color: var(--ui-on-accent);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.ui-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-1);
+}
+
+.ui-nav__link {
+  display: inline-flex;
+  align-items: center;
+  height: var(--ui-control-height-sm);
+  padding: 0 10px;
+  border-radius: var(--ui-radius);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+  font-weight: var(--ui-weight-medium);
+  text-decoration: none;
+  transition:
+    background-color var(--ui-duration) var(--ui-ease),
+    color var(--ui-duration) var(--ui-ease);
+}
+
+.ui-nav__link:hover {
+  background-color: var(--ui-surface-hover);
+  color: var(--ui-text);
+}
+
+/* react-router's NavLink sets aria-current="page" on the active link. */
+.ui-nav__link[aria-current='page'] {
+  background-color: var(--ui-surface);
+  color: var(--ui-text);
+}
+
+.ui-main {
+  flex: 1 0 auto;
+  padding-block: var(--ui-space-6) var(--ui-space-7);
+}
+
+.ui-footer {
+  flex: none;
+  padding-block: var(--ui-space-5);
+  border-top: 1px solid var(--ui-border);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+}
+
+.ui-footer a {
+  color: inherit;
+}
+
+.ui-footer a:hover {
+  color: var(--ui-text);
+}
+
+/* Touch screens: a 40 px tall target that takes no more room in the flow. */
+@media (max-width: 640px) {
+  .ui-footer a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    margin-block: -12px;
+  }
+}
+
+/* ---------------------------------------------------------- page header */
+
+.ui-page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--ui-space-3) var(--ui-space-4);
+  margin-bottom: var(--ui-space-5);
+}
+
+.ui-page-header__titles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-1);
+  min-width: 0;
+}
+
+.ui-page-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-space-2);
+  overflow-wrap: anywhere;
+}
+
+.ui-page-subtitle {
+  color: var(--ui-text-muted);
+}
+
+/* Neutral count pill, e.g. next to a page title. */
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: var(--ui-radius-full);
+  background-color: var(--ui-surface-hover);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-xs);
+  font-weight: var(--ui-weight-medium);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.ui-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+  font-weight: var(--ui-weight-medium);
+  text-decoration: none;
+}
+
+.ui-back-link:hover {
+  color: var(--ui-text);
+}
+
+/* Touch screens: a 40 px tall target that takes no more room in the flow. */
+@media (max-width: 640px) {
+  .ui-back-link {
+    min-height: 40px;
+    margin-block: -10px;
+  }
+}
+
+.ui-meta {
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------------------------------------- buttons */
+
+/* Base = secondary (bordered). Add a modifier for the other kinds. */
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ui-space-2);
+  min-height: var(--ui-control-height);
+  margin: 0;
+  padding: 0 var(--ui-space-4);
+  border: 1px solid var(--ui-border-control);
+  border-radius: var(--ui-radius);
+  background-color: var(--ui-surface-elevated);
+  box-shadow: var(--ui-shadow-sm);
+  color: var(--ui-text);
+  font-size: 0.875rem;
+  font-weight: var(--ui-weight-medium);
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  transition:
+    background-color var(--ui-duration) var(--ui-ease),
+    border-color var(--ui-duration) var(--ui-ease),
+    color var(--ui-duration) var(--ui-ease);
+}
+
+.ui-button:hover {
+  background-color: var(--ui-surface-hover);
+  color: var(--ui-text);
+}
+
+.ui-button:disabled,
+.ui-button[aria-disabled='true'] {
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ui-button[aria-disabled='true'] {
+  pointer-events: none;
+}
+
+.ui-button--primary {
+  border-color: var(--ui-accent);
+  background-color: var(--ui-accent);
+  color: var(--ui-on-accent);
+}
+
+.ui-button--primary:hover {
+  border-color: var(--ui-accent-hover);
+  background-color: var(--ui-accent-hover);
+  color: var(--ui-on-accent);
+}
+
+.ui-button--primary:disabled:hover {
+  border-color: var(--ui-accent);
+  background-color: var(--ui-accent);
+}
+
+.ui-button--secondary:disabled:hover {
+  background-color: var(--ui-surface-elevated);
+}
+
+.ui-button--ghost {
+  border-color: transparent;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.ui-button--ghost:hover {
+  background-color: var(--ui-surface-hover);
+}
+
+.ui-button--ghost:disabled:hover {
+  background-color: transparent;
+}
+
+/* Looks like a link, behaves like a button (e.g. "Clear search"). */
+.ui-button--link {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--ui-accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 2px;
+}
+
+.ui-button--link:hover {
+  background: none;
+  color: var(--ui-accent-hover);
+  text-decoration-color: currentColor;
+}
+
+.ui-button--sm {
+  min-height: var(--ui-control-height-sm);
+  padding: 0 var(--ui-space-3);
+  font-size: var(--ui-text-sm);
+}
+
+.ui-button--block {
+  width: 100%;
+}
+
+/* A standalone link (not inside running text): no underline until hover. */
+.ui-link {
+  color: var(--ui-accent);
+  font-weight: var(--ui-weight-medium);
+  text-decoration: none;
+}
+
+.ui-link:hover {
+  text-decoration: underline;
+}
+
+/* ---------------------------------------------------------------- forms */
+
+.ui-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-4);
+}
+
+.ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ui-label {
+  color: var(--ui-text);
+  font-size: var(--ui-text-sm);
+  font-weight: var(--ui-weight-medium);
+}
+
+.ui-input {
+  width: 100%;
+  min-width: 0;
+  height: var(--ui-control-height);
+  margin: 0;
+  padding: 0 var(--ui-space-3);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius);
+  background-color: var(--ui-surface-elevated);
+  color: var(--ui-text);
+  font-size: var(--ui-text-base);
+  transition:
+    border-color var(--ui-duration) var(--ui-ease),
+    outline-color var(--ui-duration) var(--ui-ease);
+}
+
+textarea.ui-input {
+  height: auto;
+  min-height: 96px;
+  padding-block: var(--ui-space-2);
+  resize: vertical;
+}
+
+.ui-input::placeholder {
+  color: var(--ui-text-muted);
+  opacity: 1;
+}
+
+.ui-input:hover {
+  border-color: var(--ui-text-muted);
+}
+
+.ui-input:focus-visible {
+  border-color: var(--ui-accent);
+  outline-offset: 1px;
+}
+
+.ui-input[aria-invalid='true'] {
+  border-color: var(--ui-danger);
+}
+
+.ui-input[aria-invalid='true']:focus-visible {
+  outline-color: var(--ui-danger);
+}
+
+.ui-input:disabled {
+  background-color: var(--ui-surface);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* 16 px on phones: iOS zooms into smaller inputs. */
+@media (max-width: 640px) {
+  .ui-input {
+    font-size: var(--ui-text-md);
+  }
+}
+
+.ui-help {
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+}
+
+.ui-error-text {
+  color: var(--ui-danger-text);
+  font-size: var(--ui-text-sm);
+  font-weight: var(--ui-weight-medium);
+}
+
+/* A row of controls that wraps: search input + buttons + chips. */
+.ui-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ui-space-2);
+}
+
+.ui-toolbar > .ui-field {
+  flex: 1 1 240px;
+}
+
+/* Buttons side by side; --stretch makes them share the width. */
+.ui-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ui-space-2);
+}
+
+.ui-actions--stretch > * {
+  flex: 1 1 0;
+}
+
+/* ---------------------------------------------------------------- cards */
+
+.ui-card {
+  padding: var(--ui-space-5);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  background-color: var(--ui-surface-elevated);
+  box-shadow: var(--ui-shadow);
+}
+
+.ui-card--roomy {
+  padding: var(--ui-space-6);
+}
+
+.ui-card--flat {
+  box-shadow: none;
+}
+
+@media (max-width: 640px) {
+  .ui-card,
+  .ui-card--roomy {
+    padding: var(--ui-space-4);
+  }
+}
+
+/* Whole card clickable through ONE real link (.ui-card__link) whose ::after
+   covers the card; other controls inside stay clickable above it. */
+.ui-card--interactive {
+  position: relative;
+  transition:
+    border-color var(--ui-duration) var(--ui-ease),
+    box-shadow var(--ui-duration) var(--ui-ease);
+}
+
+.ui-card--interactive:hover {
+  border-color: var(--ui-border-control);
+  box-shadow: var(--ui-shadow-hover);
+}
+
+.ui-card--interactive:has(.ui-card__link:focus-visible) {
+  outline: 2px solid var(--ui-focus-ring);
+  outline-offset: 2px;
+}
+
+.ui-card--interactive :is(button, input, select, textarea, a:not(.ui-card__link)) {
+  position: relative;
+  z-index: 1;
+}
+
+.ui-card__link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.ui-card__link:hover {
+  color: inherit;
+}
+
+.ui-card__link:focus-visible {
+  outline: none;
+}
+
+.ui-card__link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.ui-card__title {
+  font-size: 1rem;
+  font-weight: var(--ui-weight-semibold);
+  line-height: var(--ui-leading-tight);
+  overflow-wrap: anywhere;
+}
+
+.ui-card__meta {
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Responsive list of cards (a <ul>): 1 column on phones, more when wide. */
+.ui-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: var(--ui-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---------------------------------------------------------------- chips */
+
+.ui-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-space-1);
+  min-height: 24px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-full);
+  background-color: var(--ui-surface);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-xs);
+  font-weight: var(--ui-weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+button.ui-chip {
+  position: relative;
+  cursor: pointer;
+  transition:
+    background-color var(--ui-duration) var(--ui-ease),
+    border-color var(--ui-duration) var(--ui-ease),
+    color var(--ui-duration) var(--ui-ease);
+}
+
+button.ui-chip:hover {
+  border-color: var(--ui-border-control);
+  color: var(--ui-text);
+}
+
+button.ui-chip:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+button.ui-chip:disabled:hover {
+  border-color: var(--ui-border);
+  color: var(--ui-text-muted);
+}
+
+/* An active filter (removable). Also for aria-pressed="true" toggles. */
+.ui-chip--selected,
+.ui-chip[aria-pressed='true'] {
+  border-color: var(--ui-accent-border);
+  background-color: var(--ui-accent-soft);
+  color: var(--ui-accent);
+}
+
+button.ui-chip--selected:hover,
+button.ui-chip[aria-pressed='true']:hover {
+  border-color: var(--ui-accent);
+  color: var(--ui-accent-hover);
+}
+
+.ui-chip__remove {
+  font-size: 1.15em;
+  line-height: 1;
+  opacity: 0.8;
+}
+
+/* Touch screens: 32 px chips whose target extends to 40 px (rows keep 8 px
+   apart, so neighbouring targets do not overlap). */
+@media (max-width: 640px) {
+  .ui-chip-list {
+    gap: var(--ui-space-2);
+  }
+
+  button.ui-chip {
+    min-height: 32px;
+  }
+
+  button.ui-chip::after {
+    content: '';
+    position: absolute;
+    inset: -4px 0;
+  }
+}
+
+/* --------------------------------------------------------------- alerts */
+
+/* An icon (.ui-alert__icon, decorative), the message (.ui-alert__body) and an
+   optional dismiss button (.ui-alert__dismiss). */
+.ui-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: var(--ui-space-3) var(--ui-space-4);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  background-color: var(--ui-surface);
+  color: var(--ui-text);
+  font-size: 0.875rem;
+}
+
+.ui-alert--info {
+  border-color: var(--ui-accent-border);
+  background-color: var(--ui-accent-soft);
+}
+
+.ui-alert--error {
+  border-color: var(--ui-danger-border);
+  background-color: var(--ui-danger-soft);
+  color: var(--ui-danger-text);
+}
+
+.ui-alert--success {
+  border-color: var(--ui-success-border);
+  background-color: var(--ui-success-soft);
+  color: var(--ui-success-text);
+}
+
+.ui-alert__title {
+  font-weight: var(--ui-weight-semibold);
+}
+
+.ui-alert__icon {
+  display: block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+
+.ui-alert--error .ui-alert__icon {
+  color: var(--ui-danger);
+}
+
+.ui-alert__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ui-space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ui-alert__dismiss {
+  flex: none;
+  min-width: var(--ui-control-height-sm);
+  margin: -6px -8px -6px 0;
+  padding: 0;
+  color: inherit;
+}
+
+.ui-alert a {
+  color: inherit;
+}
+
+/* --------------------------------------------- empty, loading, error states */
+
+.ui-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-7) var(--ui-space-5);
+  color: var(--ui-text-muted);
+  text-align: center;
+}
+
+.ui-state--bordered {
+  border: 1px dashed var(--ui-border-control);
+  border-radius: var(--ui-radius-lg);
+}
+
+.ui-state__icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background-color: var(--ui-surface-hover);
+  color: var(--ui-text-muted);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.ui-state__icon--danger {
+  background-color: var(--ui-danger-soft);
+  color: var(--ui-danger);
+}
+
+.ui-state__title {
+  color: var(--ui-text);
+  font-size: 1rem;
+  font-weight: var(--ui-weight-semibold);
+}
+
+.ui-state__text {
+  max-width: 46ch;
+  font-size: 0.875rem;
+}
+
+.ui-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--ui-space-2);
+  margin-top: var(--ui-space-1);
+}
+
+/* Spinner: static ring under reduced motion (the text says what loads). */
+.ui-spinner {
+  display: inline-block;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--ui-border-control);
+  border-top-color: var(--ui-accent);
+  border-radius: 50%;
+  animation: ui-spin 0.8s linear infinite;
+}
+
+.ui-spinner--sm {
+  width: 14px;
+  height: 14px;
+}
+
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Skeleton placeholder (decorative: add aria-hidden="true"). */
+.ui-skeleton {
+  display: block;
+  height: 0.875rem;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    var(--ui-surface-hover) 0%,
+    var(--ui-border) 50%,
+    var(--ui-surface-hover) 100%
+  );
+  background-size: 200% 100%;
+  animation: ui-shimmer 1.4s ease-in-out infinite;
+}
+
+.ui-skeleton--title {
+  width: 60%;
+  height: 1.125rem;
+}
+
+@keyframes ui-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* ------------------------------------------------------ auth and consent */
+
+.ui-auth {
+  display: flex;
+  justify-content: center;
+  padding-block: var(--ui-space-5);
+}
+
+.ui-auth__card {
+  width: 100%;
+  max-width: var(--ui-auth-width);
+}
+
+.ui-auth__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-1);
+  margin-bottom: var(--ui-space-5);
+}
+
+.ui-auth__subtitle {
+  color: var(--ui-text-muted);
+}
+
+.ui-auth__links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ui-space-2);
+  margin-top: var(--ui-space-5);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+  text-align: center;
+}
+
+/* Requested permissions: a bordered list with a check mark per scope. */
+.ui-scope-list {
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  list-style: none;
+}
+
+.ui-scope-list > li {
+  position: relative;
+  padding: 10px var(--ui-space-3) 10px 36px;
+  font-size: 0.875rem;
+}
+
+.ui-scope-list > li + li {
+  border-top: 1px solid var(--ui-border);
+}
+
+.ui-scope-list > li::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 15px;
+  width: 5px;
+  height: 10px;
+  margin-top: -6px;
+  border: solid var(--ui-accent);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.ui-divider {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--ui-border);
+}

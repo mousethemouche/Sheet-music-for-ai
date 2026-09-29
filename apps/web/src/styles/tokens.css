@@ -1,0 +1,154 @@
+/*
+ * Design tokens of the web app: the single source of truth for colors, type,
+ * spacing, radii, shadows and motion (docs/architecture/DESIGN_SYSTEM.md).
+ * Light by default, dark through prefers-color-scheme. Components read these
+ * variables only; no hard-coded color outside this file.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* Typography: system fonts only (CSP font-src, offline). */
+  --ui-font-sans:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --ui-font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --ui-text-xs: 0.75rem; /* 12px */
+  --ui-text-sm: 0.8125rem; /* 13px */
+  --ui-text-base: 0.9375rem; /* 15px: body */
+  --ui-text-md: 1rem; /* 16px: inputs on touch screens (no iOS zoom) */
+  --ui-text-lg: 1.125rem; /* 18px: h2 */
+  --ui-text-xl: 1.5rem; /* 24px: page titles */
+  --ui-leading: 1.5;
+  --ui-leading-tight: 1.25;
+  --ui-tracking-tight: -0.011em;
+  --ui-tracking-title: -0.02em;
+  --ui-weight-medium: 500;
+  --ui-weight-semibold: 600;
+
+  /* Spacing scale: 4 / 8 / 12 / 16 / 24 / 32 / 48. */
+  --ui-space-1: 4px;
+  --ui-space-2: 8px;
+  --ui-space-3: 12px;
+  --ui-space-4: 16px;
+  --ui-space-5: 24px;
+  --ui-space-6: 32px;
+  --ui-space-7: 48px;
+
+  /* Radii. */
+  --ui-radius: 8px; /* controls */
+  --ui-radius-lg: 12px; /* cards */
+  --ui-radius-full: 999px; /* chips, switches */
+
+  /* Sizes. */
+  --ui-control-height: 40px;
+  --ui-control-height-sm: 32px; /* 40px at 640px and below */
+  --ui-header-height: 56px;
+  --ui-container-width: 1040px;
+  --ui-gutter: 24px;
+  --ui-auth-width: 400px;
+
+  /* Motion (disabled under prefers-reduced-motion in base.css). */
+  --ui-duration: 120ms;
+  --ui-ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Colors: light. */
+  --ui-bg: #ffffff;
+  --ui-surface: #f7f7f8;
+  --ui-surface-elevated: #ffffff;
+  --ui-surface-hover: #f4f4f5;
+  --ui-header-bg: rgb(255 255 255 / 0.88);
+  --ui-border: #e4e4e7; /* dividers, cards */
+  --ui-border-control: #d4d4d8; /* secondary buttons, chips */
+  --ui-border-strong: #8b8b94; /* input boundaries: 3:1 on bg and surface */
+  --ui-text: #18181b;
+  --ui-text-muted: #71717a;
+  --ui-accent: #4f46e5;
+  --ui-accent-hover: #4338ca;
+  --ui-accent-soft: #eef2ff;
+  --ui-accent-border: #c7d2fe;
+  --ui-on-accent: #ffffff;
+  --ui-danger: #dc2626;
+  --ui-danger-text: #b91c1c;
+  --ui-danger-soft: #fef2f2;
+  --ui-danger-border: #fecaca;
+  --ui-success: #16a34a;
+  --ui-success-text: #15803d;
+  --ui-success-soft: #f0fdf4;
+  --ui-success-border: #bbf7d0;
+  --ui-focus-ring: var(--ui-accent);
+
+  /* Shadows: very subtle, elevated cards only. */
+  --ui-shadow-sm: 0 1px 2px rgb(24 24 27 / 0.04);
+  --ui-shadow: 0 1px 2px rgb(24 24 27 / 0.04), 0 2px 8px rgb(24 24 27 / 0.04);
+  --ui-shadow-hover: 0 1px 2px rgb(24 24 27 / 0.05), 0 6px 16px rgb(24 24 27 / 0.07);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ui-bg: #0f0f11;
+    --ui-surface: #17171a;
+    --ui-surface-elevated: #1c1c20;
+    --ui-surface-hover: #232328;
+    --ui-header-bg: rgb(15 15 17 / 0.85);
+    --ui-border: #2a2a30;
+    --ui-border-control: #3a3a42;
+    --ui-border-strong: #6b6b76;
+    --ui-text: #f4f4f5;
+    --ui-text-muted: #a1a1aa;
+    --ui-accent: #818cf8;
+    --ui-accent-hover: #a5b4fc;
+    --ui-accent-soft: rgb(129 140 248 / 0.14);
+    --ui-accent-border: rgb(129 140 248 / 0.35);
+    /* White on #818cf8 is about 3:1 (below AA): dark text on accent fills. */
+    --ui-on-accent: #0f0f11;
+    --ui-danger: #f87171;
+    --ui-danger-text: #fca5a5;
+    --ui-danger-soft: rgb(248 113 113 / 0.12);
+    --ui-danger-border: rgb(248 113 113 / 0.35);
+    --ui-success: #4ade80;
+    --ui-success-text: #86efac;
+    --ui-success-soft: rgb(74 222 128 / 0.12);
+    --ui-success-border: rgb(74 222 128 / 0.3);
+
+    --ui-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.3);
+    --ui-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 2px 8px rgb(0 0 0 / 0.2);
+    --ui-shadow-hover: 0 1px 2px rgb(0 0 0 / 0.35), 0 6px 16px rgb(0 0 0 / 0.3);
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --ui-gutter: 16px;
+    /* Touch screens: small controls keep a 40 px target (header, alerts, links). */
+    --ui-control-height-sm: 40px;
+  }
+}
+
+/*
+ * ScorePlayer chrome (packages/score-ui): its --smp-* variables mapped to the
+ * tokens, so the player follows light/dark with the app. Declared on :root,
+ * they resolve against the scheme above. The notation paper and ink are not
+ * variables: they follow the player's `theme` prop (DESIGN_SYSTEM.md §5).
+ */
+:root {
+  --smp-text: var(--ui-text);
+  --smp-muted: var(--ui-text-muted);
+  --smp-surface: var(--ui-surface);
+  --smp-elevated: var(--ui-surface-elevated);
+  --smp-hover: var(--ui-surface-hover);
+  --smp-border: var(--ui-border);
+  --smp-border-control: var(--ui-border-control);
+  --smp-border-strong: var(--ui-border-strong);
+  --smp-accent: var(--ui-accent);
+  --smp-accent-hover: var(--ui-accent-hover);
+  --smp-accent-soft: var(--ui-accent-soft);
+  --smp-on-accent: var(--ui-on-accent);
+  --smp-danger: var(--ui-danger);
+  --smp-danger-text: var(--ui-danger-text);
+  --smp-danger-soft: var(--ui-danger-soft);
+  --smp-focus: var(--ui-focus-ring);
+  --smp-radius: var(--ui-radius);
+  --smp-radius-lg: var(--ui-radius-lg);
+}

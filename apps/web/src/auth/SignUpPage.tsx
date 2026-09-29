@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type JSX } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
+import { AuthCard } from './AuthCard';
 import { useAuth } from './AuthProvider';
 import { FormError, TextField, emailError, newPasswordError, usePendingAction } from './forms';
 import { authErrorMessage } from './messages';
@@ -28,16 +29,24 @@ export function SignUpPage(): JSX.Element {
   if (confirmationSentTo) {
     // Not a session: the account is usable only after the emailed link is opened.
     return (
-      <section aria-labelledby="sign-up-title">
-        <h1 id="sign-up-title">Check your email</h1>
+      <AuthCard
+        titleId="sign-up-title"
+        title="Check your email"
+        icon={{ name: 'mail' }}
+        links={
+          <Link
+            className="ui-button ui-button--secondary ui-button--block"
+            to={withReturnPath('/login', returnPath)}
+          >
+            Go to sign in
+          </Link>
+        }
+      >
         <p role="status">
-          We sent a confirmation link to {confirmationSentTo}. Open it to activate your account,
-          then sign in.
+          We sent a confirmation link to <strong>{confirmationSentTo}</strong>. Open it to activate
+          your account, then sign in.
         </p>
-        <p>
-          <Link to={withReturnPath('/login', returnPath)}>Go to sign in</Link>
-        </p>
-      </section>
+      </AuthCard>
     );
   }
 
@@ -65,9 +74,20 @@ export function SignUpPage(): JSX.Element {
   };
 
   return (
-    <section aria-labelledby="sign-up-title">
-      <h1 id="sign-up-title">Create an account</h1>
-      <form noValidate onSubmit={submit}>
+    <AuthCard
+      titleId="sign-up-title"
+      title="Create an account"
+      subtitle="Keep the scores the AI writes for you in your private library."
+      links={
+        <p>
+          Already have an account?{' '}
+          <Link className="ui-link" to={withReturnPath('/login', returnPath)}>
+            Sign in
+          </Link>
+        </p>
+      }
+    >
+      <form noValidate onSubmit={submit} className="ui-form">
         <TextField
           label="Email"
           name="email"
@@ -87,13 +107,14 @@ export function SignUpPage(): JSX.Element {
           error={fieldErrors.password}
         />
         <FormError message={error} />
-        <button type="submit" disabled={pending}>
+        <button
+          type="submit"
+          className="ui-button ui-button--primary ui-button--block"
+          disabled={pending}
+        >
           {pending ? 'Creating account…' : 'Create account'}
         </button>
       </form>
-      <p>
-        Already have an account? <Link to={withReturnPath('/login', returnPath)}>Sign in</Link>
-      </p>
-    </section>
+    </AuthCard>
   );
 }

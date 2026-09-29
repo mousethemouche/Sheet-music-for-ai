@@ -1,0 +1,315 @@
+/*
+ * Page-level layout of the web app: what the `.ui-*` primitives of base.css
+ * do not cover (header navigation, library search and cards, score page).
+ * Tokens only, no hard-coded color. Imported once, by main.tsx, after
+ * base.css. Classes: `.app-*` (shell and shared), `.library*`, `.score-page*`,
+ * `.api-failure*`.
+ */
+
+/* ------------------------------------------------------------- shared */
+
+.app-icon {
+  display: block;
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+.app-icon--sm {
+  width: 16px;
+  height: 16px;
+}
+
+/* Long URLs and IDs wrap instead of widening the page. */
+.app-break {
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------ header and nav */
+
+/* The one "Account" nav: Library next to the brand, the account at the end. */
+.app-nav {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--ui-space-1);
+  min-width: 0;
+}
+
+/* A failed sign-out: an alert at the top of the page, in the flow. */
+.app-account-alert {
+  margin-bottom: var(--ui-space-5);
+}
+
+/* A saved score belongs to the Library section: same look as the active link. */
+.ui-nav__link.app-nav__link--section {
+  background-color: var(--ui-surface);
+  color: var(--ui-text);
+}
+
+/* Phones: the sign-in page links to account creation; the brand keeps its room. */
+@media (max-width: 440px) {
+  .app-nav__signup {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------ auth */
+
+@media (min-width: 641px) {
+  .ui-auth {
+    padding-top: var(--ui-space-6);
+  }
+}
+
+.app-auth-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--ui-space-3);
+  border-radius: 50%;
+  background-color: var(--ui-accent-soft);
+  color: var(--ui-accent);
+}
+
+.app-auth-icon--success {
+  background-color: var(--ui-success-soft);
+  color: var(--ui-success);
+}
+
+.app-auth-icon--danger {
+  background-color: var(--ui-danger-soft);
+  color: var(--ui-danger);
+}
+
+.ui-auth__card strong {
+  font-weight: var(--ui-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------- full-page states */
+
+.app-page-state {
+  padding-block: var(--ui-space-7);
+}
+
+.app-page-state h1 {
+  color: var(--ui-text);
+}
+
+/* ------------------------------------------------------------ library */
+
+.library__search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-3);
+  margin-bottom: var(--ui-space-5);
+}
+
+.library__search-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-space-2);
+}
+
+.library__search-field {
+  position: relative;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.library__search-icon {
+  position: absolute;
+  top: 50%;
+  left: var(--ui-space-3);
+  width: 18px;
+  height: 18px;
+  color: var(--ui-text-muted);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.library__search-input {
+  padding-left: 38px;
+}
+
+/* Active search: the tag filters and "Clear search", under the search row. */
+.library__refine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-space-2) var(--ui-space-4);
+}
+
+.library__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ui-space-2);
+}
+
+.library__filters-label {
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+}
+
+/* The status line: a small count or "Loading…" above the results... */
+.library__status {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+  margin-bottom: var(--ui-space-4);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+}
+
+/* ...or the center of the empty and no-match states. */
+.library__status.ui-state {
+  flex-direction: column;
+  gap: var(--ui-space-2);
+  margin-bottom: 0;
+  font-size: 0.875rem;
+}
+
+.library__status.ui-state .ui-state__icon {
+  margin-bottom: var(--ui-space-1);
+}
+
+.library__status.ui-state .ui-state__title {
+  font-size: 1rem;
+}
+
+.library .api-failure {
+  margin-bottom: var(--ui-space-4);
+}
+
+.library-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-3);
+}
+
+@media (min-width: 641px) {
+  .library-card {
+    padding: 20px;
+  }
+}
+
+/* Dates line up at the bottom of each row of cards. */
+.library-card__meta {
+  margin-top: auto;
+}
+
+/* A tag already used as a filter reads as selected, not as broken. */
+.library-card button.ui-chip--selected:disabled {
+  opacity: 1;
+}
+
+.library-card button.ui-chip--selected:disabled:hover {
+  border-color: var(--ui-accent-border);
+  color: var(--ui-accent);
+}
+
+.library-card--skeleton {
+  box-shadow: none;
+}
+
+.library-card__skeleton-chips {
+  width: 45%;
+  height: 22px;
+  border-radius: var(--ui-radius-full);
+}
+
+.library-card__skeleton-meta {
+  width: 35%;
+  margin-top: auto;
+}
+
+.library__more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--ui-space-5);
+}
+
+/* ---------------------------------------------------------- score page */
+
+.score-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-5);
+  min-width: 0;
+}
+
+.score-page__header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ui-space-2);
+}
+
+.score-page__header h1 {
+  overflow-wrap: anywhere;
+}
+
+.score-page__header .ui-chip-list {
+  margin-top: var(--ui-space-1);
+}
+
+.score-page__player {
+  min-width: 0;
+}
+
+.score-page__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ui-space-3);
+  min-height: 240px;
+  color: var(--ui-text-muted);
+  font-size: 0.875rem;
+}
+
+/* The score ID: a quiet row under a divider, not a second card. */
+.score-page__id {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-1);
+  padding-top: var(--ui-space-4);
+  border-top: 1px solid var(--ui-border);
+}
+
+.score-page__id-value {
+  color: var(--ui-text-muted);
+  font-size: 0.875rem;
+  font-weight: var(--ui-weight-medium);
+}
+
+/* One box that wraps inside itself on phones (never two half-chips). */
+.score-page__id-code {
+  display: inline-block;
+  max-width: 100%;
+  color: var(--ui-text);
+  font-weight: 400;
+  vertical-align: top;
+}
+
+/* ----------------------------------------------------- failure alerts */
+
+/* A failed request: a centered state (base.css .ui-state) with the message
+   as its title, one action, and the support reference in small print. */
+.api-failure__message {
+  max-width: 46ch;
+}
+
+.api-failure__actions {
+  flex-direction: column;
+  align-items: center;
+}
+
+.api-failure__reference {
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-xs);
+}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import { Link, useParams } from 'react-router';
 import type { ApiResult, SavedScoreResponse, ScoresApi } from '../api/scoresApi';
 import type { WebPlayer } from '../player/webPlayer';
+import { usePrefersDark } from '../shell/usePrefersDark';
 import { ApiFailureAlert } from './ApiFailureAlert';
 import { formatDate } from './format';
 import { usePrivateCleanup, useSignedInUser } from './privateState';
@@ -74,20 +75,32 @@ function SavedScoreView(props: {
   );
 
   const result = !validId ? NOT_FOUND : outcome?.attempt === attempt ? outcome.result : null;
+  // The notation paper and ink follow the same scheme as the page (DESIGN_SYSTEM.md §5).
+  const theme = usePrefersDark() ? 'dark' : 'light';
 
   if (result === null) {
     return (
-      <section aria-labelledby="score-title">
-        <h1 id="score-title">Saved score</h1>
-        <p role="status">Loading the score…</p>
+      <section aria-labelledby="score-title" className="score-page">
+        <BackToLibrary />
+        <div className="score-page__header">
+          <h1 id="score-title">Saved score</h1>
+        </div>
+        <div className="ui-card ui-card--flat score-page__loading">
+          <span className="ui-spinner" aria-hidden="true" />
+          <p role="status">Loading the score…</p>
+        </div>
       </section>
     );
   }
 
   if (!result.ok) {
     return (
-      <section aria-labelledby="score-title">
-        <h1 id="score-title">Saved score</h1>
+      <section aria-labelledby="score-title" className="score-page">
+        {/* A missing score's state offers the way back itself: one link, not two. */}
+        {result.error.kind !== 'not-found' && <BackToLibrary />}
+        <div className="score-page__header">
+          <h1 id="score-title">Saved score</h1>
+        </div>
         <ApiFailureAlert
           error={result.error}
           resource="score"
@@ -99,34 +112,54 @@ function SavedScoreView(props: {
 
   const saved = result.value;
   return (
-    <section aria-labelledby="score-title">
-      <p>
-        <Link to="/library">Back to your library</Link>
-      </p>
-      <h1 id="score-title">{saved.title}</h1>
-      {saved.tags.length > 0 && (
-        <ul aria-label="Tags">
-          {saved.tags.map((tag) => (
-            <li key={tag}>{tag}</li>
-          ))}
-        </ul>
-      )}
-      <p>
-        Saved <time dateTime={saved.createdAt}>{formatDate(saved.createdAt)}</time>, updated{' '}
-        <time dateTime={saved.updatedAt}>{formatDate(saved.updatedAt)}</time>, revision{' '}
-        {saved.revision}.
-      </p>
-      <p>
-        Score ID: <code>{saved.scoreId}</code>
-      </p>
-      <p>
-        To keep working on this score with the AI, give it this ID in a conversation. Its edits
-        update this saved score.
-      </p>
-      <ScorePlayer artifact={saved} ports={player.ports} />
-      <p>
-        <Link to="/about">Piano sound credits</Link>
+    <section aria-labelledby="score-title" className="score-page">
+      <BackToLibrary />
+      <div className="score-page__header">
+        <h1 id="score-title">{saved.title}</h1>
+        {saved.tags.length > 0 && (
+          <ul aria-label="Tags" className="ui-chip-list">
+            {saved.tags.map((tag) => (
+              <li key={tag} className="ui-chip">
+                {tag}
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="ui-meta">
+          Saved <time dateTime={saved.createdAt}>{formatDate(saved.createdAt)}</time>, updated{' '}
+          <time dateTime={saved.updatedAt}>{formatDate(saved.updatedAt)}</time>, revision{' '}
+          {saved.revision}.
+        </p>
+      </div>
+      {/* No card around it: the notation paper and the controls bar are the only frames. */}
+      <div className="score-page__player">
+        <ScorePlayer artifact={saved} ports={player.ports} theme={theme} />
+      </div>
+      <div className="score-page__id">
+        <p className="score-page__id-value">
+          Score ID: <code className="score-page__id-code">{saved.scoreId}</code>
+        </p>
+        <p className="ui-small ui-muted">
+          To keep working on this score with the AI, give it this ID in a conversation. Its edits
+          update this saved score.
+        </p>
+      </div>
+      <p className="ui-small">
+        <Link className="ui-link" to="/about">
+          Piano sound credits
+        </Link>
       </p>
     </section>
+  );
+}
+
+function BackToLibrary(): JSX.Element {
+  return (
+    <p>
+      <Link className="ui-back-link" to="/library">
+        <span aria-hidden="true">←</span>
+        Back to your library
+      </Link>
+    </p>
   );
 }

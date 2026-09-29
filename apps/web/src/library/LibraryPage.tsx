@@ -6,6 +6,7 @@ import {
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type JSX } from 'react';
 import { Link } from 'react-router';
 import type { ApiResult, ScoresApi } from '../api/scoresApi';
+import { Icon } from '../shell/icons';
 import { ApiFailureAlert } from './ApiFailureAlert';
 import { formatDate } from './format';
 import { usePrivateCleanup, useSignedInUser } from './privateState';
@@ -20,9 +21,13 @@ import { usePrivateCleanup, useSignedInUser } from './privateState';
 export function LibraryPage(props: { scores: ScoresApi }): JSX.Element {
   const user = useSignedInUser();
   return (
-    <section aria-labelledby="library-title">
-      <h1 id="library-title">Your library</h1>
-      {user?.email && <p>Signed in as {user.email}.</p>}
+    <section aria-labelledby="library-title" className="library">
+      <div className="ui-page-header">
+        <div className="ui-page-header__titles">
+          <h1 id="library-title">Your library</h1>
+          {user?.email && <p className="ui-page-subtitle">Signed in as {user.email}.</p>}
+        </div>
+      </div>
       {user && <Library key={user.id} scores={props.scores} />}
     </section>
   );
@@ -88,6 +93,7 @@ function Library(props: { scores: ScoresApi }): JSX.Element {
   const result = outcome?.load === load ? outcome.result : null;
   const page = result?.ok ? result.value.page : null;
   const items = result?.ok ? appendPage(load.shown, result.value.items) : load.shown;
+  const view = viewOf(result, load, items.length, searching);
 
   const start = (next: Search) => setLoad(firstPage(next));
   const onSubmit = (event: FormEvent) => {
@@ -107,43 +113,100 @@ function Library(props: { scores: ScoresApi }): JSX.Element {
 
   return (
     <>
-      <form role="search" aria-label="Search your library" onSubmit={onSubmit}>
-        <label htmlFor={inputId}>Search titles and tags</label>{' '}
-        <input
-          id={inputId}
-          type="search"
-          value={draft}
-          maxLength={PAYLOAD_LIMITS.searchQueryLength}
-          onChange={(event) => setDraft(event.currentTarget.value)}
-        />{' '}
-        <button type="submit">Search</button>{' '}
-        {searching && (
-          <button type="button" onClick={clear}>
-            Clear search
-          </button>
-        )}
-      </form>
+      {/* Nothing to search in an empty library: the empty state says what to do instead. */}
+      {view !== 'empty' && (
+        <div className="library__search">
+          <form
+            role="search"
+            aria-label="Search your library"
+            onSubmit={onSubmit}
+            className="library__search-form"
+          >
+            <div className="library__search-field">
+              <label htmlFor={inputId} className="ui-visually-hidden">
+                Search titles and tags
+              </label>
+              <Icon name="search" className="library__search-icon" />
+              <input
+                id={inputId}
+                type="search"
+                className="ui-input library__search-input"
+                placeholder="Search titles and tags"
+                value={draft}
+                maxLength={PAYLOAD_LIMITS.searchQueryLength}
+                onChange={(event) => setDraft(event.currentTarget.value)}
+              />
+            </div>
+            <button type="submit" className="ui-button ui-button--secondary">
+              Search
+            </button>
+          </form>
 
-      {search.tags.length > 0 && (
-        <div>
-          <p id={filtersId}>Showing only scores tagged with all of:</p>
-          <ul aria-labelledby={filtersId}>
-            {search.tags.map((tag) => (
-              <li key={tag}>
-                <button
-                  type="button"
-                  aria-label={`Remove tag filter ${tag}`}
-                  onClick={() => removeTag(tag)}
-                >
-                  {tag} ×
-                </button>
-              </li>
-            ))}
-          </ul>
+          {searching && (
+            <div className="library__refine">
+              {search.tags.length > 0 && (
+                <div className="library__filters">
+                  <p id={filtersId} className="library__filters-label">
+                    Showing only scores tagged with all of:
+                  </p>
+                  <ul aria-labelledby={filtersId} className="ui-chip-list">
+                    {search.tags.map((tag) => (
+                      <li key={tag}>
+                        <button
+                          type="button"
+                          className="ui-chip ui-chip--selected"
+                          aria-label={`Remove tag filter ${tag}`}
+                          onClick={() => removeTag(tag)}
+                        >
+                          {tag}{' '}
+                          <span className="ui-chip__remove" aria-hidden="true">
+                            ×
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <button
+                type="button"
+                className="ui-button ui-button--ghost ui-button--sm library__clear"
+                onClick={clear}
+              >
+                Clear search
+              </button>
+            </div>
+          )}
         </div>
       )}
 
-      <p role="status">{statusText(result, load, items.length, page?.total, searching)}</p>
+      {/* One live region for every state; only its surroundings change. */}
+      <div className={STATUS_CLASS[view]}>
+        {(view === 'empty' || view === 'no-match') && (
+          <span className="ui-state__icon" aria-hidden="true">
+            <Icon name={view === 'empty' ? 'music' : 'search'} />
+          </span>
+        )}
+        {view === 'empty' && <h2 className="ui-state__title">No saved scores yet</h2>}
+        {(view === 'loading' || view === 'loading-more') && (
+          <span className="ui-spinner ui-spinner--sm" aria-hidden="true" />
+        )}
+        <p
+          role="status"
+          className={
+            view === 'no-match'
+              ? 'ui-state__title'
+              : view === 'empty'
+                ? 'ui-state__text'
+                : undefined
+          }
+        >
+          {statusText(result, load, items.length, page?.total, searching)}
+        </p>
+        {view === 'no-match' && (
+          <p className="ui-state__text">Try other words, or remove a tag filter.</p>
+        )}
+      </div>
 
       {result && !result.ok && (
         <ApiFailureAlert
@@ -153,8 +216,20 @@ function Library(props: { scores: ScoresApi }): JSX.Element {
         />
       )}
 
+      {view === 'loading' && (
+        <div className="ui-card-grid" aria-hidden="true">
+          {SKELETON_CARDS.map((key) => (
+            <div key={key} className="ui-card library-card library-card--skeleton">
+              <span className="ui-skeleton ui-skeleton--title" />
+              <span className="ui-skeleton library-card__skeleton-chips" />
+              <span className="ui-skeleton library-card__skeleton-meta" />
+            </div>
+          ))}
+        </div>
+      )}
+
       {items.length > 0 && (
-        <ul aria-label="Saved scores">
+        <ul aria-label="Saved scores" className="ui-card-grid">
           {items.map((summary) => (
             <SummaryItem
               key={summary.scoreId}
@@ -167,12 +242,15 @@ function Library(props: { scores: ScoresApi }): JSX.Element {
       )}
 
       {page?.nextOffset != null && (
-        <button
-          type="button"
-          onClick={() => setLoad({ search, offset: page.nextOffset ?? 0, shown: items })}
-        >
-          Show more
-        </button>
+        <div className="library__more">
+          <button
+            type="button"
+            className="ui-button ui-button--secondary"
+            onClick={() => setLoad({ search, offset: page.nextOffset ?? 0, shown: items })}
+          >
+            Show more
+          </button>
+        </div>
       )}
     </>
   );
@@ -185,29 +263,35 @@ function SummaryItem(props: {
 }): JSX.Element {
   const { summary, activeTags, onTag } = props;
   return (
-    <li>
-      <h2>
-        <Link to={`/scores/${encodeURIComponent(summary.scoreId)}`}>{summary.title}</Link>
+    <li className="ui-card ui-card--interactive library-card">
+      <h2 className="ui-card__title">
+        <Link className="ui-card__link" to={`/scores/${encodeURIComponent(summary.scoreId)}`}>
+          {summary.title}
+        </Link>
       </h2>
-      <p>
-        Updated <time dateTime={summary.updatedAt}>{formatDate(summary.updatedAt)}</time>
-      </p>
       {summary.tags.length > 0 && (
-        <ul aria-label="Tags">
-          {summary.tags.map((tag) => (
-            <li key={tag}>
-              <button
-                type="button"
-                aria-label={`Filter by tag ${tag}`}
-                disabled={hasTag(activeTags, tag)}
-                onClick={() => onTag(tag)}
-              >
-                {tag}
-              </button>
-            </li>
-          ))}
+        <ul aria-label="Tags" className="ui-chip-list">
+          {summary.tags.map((tag) => {
+            const active = hasTag(activeTags, tag);
+            return (
+              <li key={tag}>
+                <button
+                  type="button"
+                  className={active ? 'ui-chip ui-chip--selected' : 'ui-chip'}
+                  aria-label={`Filter by tag ${tag}`}
+                  disabled={active}
+                  onClick={() => onTag(tag)}
+                >
+                  {tag}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
+      <p className="ui-card__meta library-card__meta">
+        Updated <time dateTime={summary.updatedAt}>{formatDate(summary.updatedAt)}</time>
+      </p>
     </li>
   );
 }
@@ -222,6 +306,34 @@ function appendPage(
   return [...shown, ...next.filter((summary) => !seen.has(summary.scoreId))];
 }
 
+/** What the list area shows; the status line's text is statusText. */
+type View = 'loading' | 'loading-more' | 'results' | 'empty' | 'no-match' | 'error';
+
+function viewOf(
+  result: ApiResult<ListScoresResponse> | null,
+  load: Load,
+  shownCount: number,
+  searching: boolean,
+): View {
+  if (result === null) return load.offset === 0 ? 'loading' : 'loading-more';
+  if (!result.ok) return 'error';
+  if (shownCount > 0) return 'results';
+  return searching ? 'no-match' : 'empty';
+}
+
+/** The status line is a small count above the results, or the heart of an empty state. */
+const STATUS_CLASS: Readonly<Record<View, string>> = {
+  loading: 'library__status',
+  'loading-more': 'library__status',
+  results: 'library__status',
+  empty: 'library__status ui-state ui-state--bordered',
+  'no-match': 'library__status ui-state ui-state--bordered',
+  // Empty text: kept in the tree (the live region stays), out of the layout.
+  error: 'ui-visually-hidden',
+};
+
+const SKELETON_CARDS = ['a', 'b', 'c'] as const;
+
 function statusText(
   result: ApiResult<ListScoresResponse> | null,
   load: Load,
@@ -234,7 +346,7 @@ function statusText(
   if (shownCount === 0) {
     return searching
       ? 'No saved scores match your search.'
-      : 'Your library is empty. Scores you save from a conversation appear here.';
+      : 'Your library is empty. In Claude, ask the AI to write a score, then ask it to save the score.';
   }
   const noun = total === 1 ? 'score' : 'scores';
   return `Showing ${shownCount} of ${total ?? shownCount} ${searching ? 'matching' : 'saved'} ${noun}.`;

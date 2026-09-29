@@ -1,4 +1,5 @@
 import { useCallback, useId, useRef, useState, type JSX } from 'react';
+import { Alert } from '../shell/Alert';
 import { MIN_PASSWORD_LENGTH } from './messages';
 
 /** Labelled input whose validation message is announced and linked to it. */
@@ -14,10 +15,13 @@ export function TextField(props: {
   const id = useId();
   const errorId = `${id}-error`;
   return (
-    <div>
-      <label htmlFor={id}>{props.label}</label>
+    <div className="ui-field">
+      <label htmlFor={id} className="ui-label">
+        {props.label}
+      </label>
       <input
         id={id}
+        className="ui-input"
         name={props.name}
         type={props.type}
         autoComplete={props.autoComplete}
@@ -27,7 +31,7 @@ export function TextField(props: {
         aria-describedby={props.error ? errorId : undefined}
       />
       {props.error && (
-        <span id={errorId} role="alert">
+        <span id={errorId} role="alert" className="ui-error-text">
           {props.error}
         </span>
       )}
@@ -36,7 +40,7 @@ export function TextField(props: {
 }
 
 export function FormError(props: { message: string | null }): JSX.Element | null {
-  return props.message ? <p role="alert">{props.message}</p> : null;
+  return props.message ? <Alert tone="error">{props.message}</Alert> : null;
 }
 
 /**

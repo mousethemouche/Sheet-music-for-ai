@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router';
+import { LoadingState } from '../shell/LoadingState';
 import { useAuth } from './AuthProvider';
 import { withReturnPath } from './redirects';
 
@@ -20,5 +21,5 @@ export function RequireAuth(): JSX.Element {
 }
 
 export function SessionRestoring(): JSX.Element {
-  return <p role="status">Checking your session…</p>;
+  return <LoadingState>Checking your session…</LoadingState>;
 }

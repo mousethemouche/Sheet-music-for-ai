@@ -4,6 +4,7 @@ import type { ApiFailure, ApiFailureKind } from '../api/scoresApi';
 import { useAuth } from '../auth/AuthProvider';
 import { usePendingAction } from '../auth/forms';
 import { authErrorMessage } from '../auth/messages';
+import { Icon } from '../shell/icons';
 
 /** What failed to load: the library list or one saved score. */
 export type FailedResource = 'library' | 'score';
@@ -12,7 +13,8 @@ export type FailedResource = 'library' | 'score';
  * A failed API request, with the action that recovers from it: sign in again
  * (401), go back to the library (404 on a score), or try again (outages).
  * Messages are fixed; nothing from the response body is shown except the
- * correlation ID, as a support reference.
+ * correlation ID, as a support reference. Drawn as a centered state, like the
+ * empty and no-match states: icon, the message as its title, one action.
  */
 export function ApiFailureAlert(props: {
   error: ApiFailure;
@@ -21,21 +23,28 @@ export function ApiFailureAlert(props: {
 }): JSX.Element {
   const { error, resource, onRetry } = props;
   return (
-    <div role="alert">
-      <p>{failureMessage(error.kind, resource)}</p>
+    <div role="alert" className="ui-state ui-state--bordered api-failure">
+      <span className="ui-state__icon ui-state__icon--danger" aria-hidden="true">
+        <Icon name="alert-circle" />
+      </span>
+      <p className="ui-state__title api-failure__message">{failureMessage(error.kind, resource)}</p>
       {error.kind === 'unauthenticated' && <SignInAgain />}
       {error.kind === 'not-found' && resource === 'score' && (
-        <p>
-          <Link to="/library">Back to your library</Link>
+        <p className="ui-state__actions">
+          <Link className="ui-button ui-button--secondary" to="/library">
+            Back to your library
+          </Link>
         </p>
       )}
       {retryable(error.kind, resource) && (
-        <button type="button" onClick={onRetry}>
-          Try again
-        </button>
+        <p className="ui-state__actions">
+          <button type="button" className="ui-button ui-button--secondary" onClick={onRetry}>
+            Try again
+          </button>
+        </p>
       )}
       {error.correlationId !== null && (
-        <p>
+        <p className="api-failure__reference">
           Reference: <code>{error.correlationId}</code>
         </p>
       )}
@@ -97,11 +106,16 @@ function SignInAgain(): JSX.Element {
       if (!result.ok) setError(authErrorMessage(result.error));
     });
   return (
-    <p>
-      <button type="button" disabled={pending} onClick={onClick}>
+    <div className="ui-state__actions api-failure__actions">
+      <button
+        type="button"
+        className="ui-button ui-button--secondary"
+        disabled={pending}
+        onClick={onClick}
+      >
         Sign in again
       </button>
-      {error !== null && <span> {error}</span>}
-    </p>
+      {error !== null && <p className="ui-error-text"> {error}</p>}
+    </div>
   );
 }

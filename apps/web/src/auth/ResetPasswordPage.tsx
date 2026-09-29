@@ -1,9 +1,11 @@
 import { useEffect, useState, type FormEvent, type JSX } from 'react';
 import { Link } from 'react-router';
+import { LoadingState } from '../shell/LoadingState';
+import { AuthCard } from './AuthCard';
 import type { AuthRedirectResult } from './authPort';
 import { useAuth } from './AuthProvider';
 import { FormError, TextField, newPasswordError, usePendingAction } from './forms';
-import { authErrorMessage } from './messages';
+import { MIN_PASSWORD_LENGTH, authErrorMessage } from './messages';
 
 type Phase = 'checking' | 'ready' | 'expired' | 'invalid' | 'done';
 
@@ -36,36 +38,44 @@ export function ResetPasswordPage(): JSX.Element {
     };
   }, [port]);
 
-  if (phase === 'checking') return <p role="status">Checking your reset link…</p>;
+  if (phase === 'checking') return <LoadingState>Checking your reset link…</LoadingState>;
 
   if (phase === 'expired' || phase === 'invalid') {
     return (
-      <section aria-labelledby="reset-title">
-        <h1 id="reset-title">
-          {phase === 'expired' ? 'Reset link expired' : 'Reset link not valid'}
-        </h1>
+      <AuthCard
+        titleId="reset-title"
+        title={phase === 'expired' ? 'Reset link expired' : 'Reset link not valid'}
+        icon={{ name: 'alert', tone: 'danger' }}
+        links={
+          <Link className="ui-button ui-button--primary ui-button--block" to="/forgot-password">
+            Send a new reset link
+          </Link>
+        }
+      >
         <p role="alert">
           {phase === 'expired'
             ? 'This password reset link has expired.'
             : 'This password reset link is invalid or was already used.'}{' '}
           Ask for a new one to choose your password.
         </p>
-        <p>
-          <Link to="/forgot-password">Send a new reset link</Link>
-        </p>
-      </section>
+      </AuthCard>
     );
   }
 
   if (phase === 'done') {
     return (
-      <section aria-labelledby="reset-title">
-        <h1 id="reset-title">Password changed</h1>
+      <AuthCard
+        titleId="reset-title"
+        title="Password changed"
+        icon={{ name: 'check', tone: 'success' }}
+        links={
+          <Link className="ui-button ui-button--primary ui-button--block" to="/library">
+            Continue to your library
+          </Link>
+        }
+      >
         <p role="status">Your password has been changed.</p>
-        <p>
-          <Link to="/library">Continue to your library</Link>
-        </p>
-      </section>
+      </AuthCard>
     );
   }
 
@@ -87,9 +97,12 @@ export function ResetPasswordPage(): JSX.Element {
   };
 
   return (
-    <section aria-labelledby="reset-title">
-      <h1 id="reset-title">Choose a new password</h1>
-      <form noValidate onSubmit={submit}>
+    <AuthCard
+      titleId="reset-title"
+      title="Choose a new password"
+      subtitle={`Your new password needs ${MIN_PASSWORD_LENGTH} or more characters.`}
+    >
+      <form noValidate onSubmit={submit} className="ui-form">
         <TextField
           label="New password"
           name="new-password"
@@ -109,11 +122,15 @@ export function ResetPasswordPage(): JSX.Element {
           error={fieldErrors.confirmation}
         />
         <FormError message={error} />
-        <button type="submit" disabled={pending}>
+        <button
+          type="submit"
+          className="ui-button ui-button--primary ui-button--block"
+          disabled={pending}
+        >
           {pending ? 'Saving…' : 'Change password'}
         </button>
       </form>
-    </section>
+    </AuthCard>
   );
 }
 
