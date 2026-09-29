@@ -129,3 +129,61 @@ table of the checklist, verdict.
 | Documented limits accepted            |        |            |
 | Branch protection (or unverified)     |        |            |
 | Go / no-go                            |        |            |
+
+## Release record: MVP v1 release candidate 1 (2026-09-29)
+
+### Identification
+
+| Field              | Value                                                                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Release            | MVP v1 RC1 (branch `feat/mvp-v1-implementation`, not yet merged)                                                                                       |
+| Commit             | `c9454671b34fc07d6ce2ceda109bf9f72647b7d2` (all three deployments built from a clean worktree of it)                                                   |
+| Date               | 2026-09-29                                                                                                                                             |
+| Run by             | Claude Code (coding agent) for the owner                                                                                                               |
+| Web / API / MCP    | `https://sheet-music-for-ai-web.vercel.app`, `https://sheet-music-for-ai-api.vercel.app`, `https://sheet-music-for-ai-mcp.vercel.app/mcp`              |
+| Supabase project   | `aebdzppogfvwbibcmpza` (eu-west-3, PostgreSQL 17.6)                                                                                                    |
+| Vercel deployments | api `dpl_Gn6cm6Mt2GcLFwXc5JxY28vbpF4K`, mcp `dpl_HDo2or47aPLMpSyQhBsjMSyaJyD4`, web `dpl_36a1hKyCSHKuiuWuaPpWwJob3Yc6` (team vibeworker1, region cdg1) |
+
+### Automated suites at the release commit (local, PostgreSQL 15)
+
+| Command                                      | Result                         |
+| -------------------------------------------- | ------------------------------ |
+| CI run (URL), all jobs                       | first run on the pull request  |
+| `pnpm typecheck` and the two extra `tsc -p`  | exit 0                         |
+| `pnpm lint`                                  | exit 0 (ESLint + Prettier)     |
+| `pnpm build`                                 | exit 0                         |
+| `pnpm test` (unit, component)                | 1077 passed                    |
+| release tooling (`--project cloud`, offline) | 66 passed                      |
+| `pnpm test:integration`                      | 471 passed                     |
+| `pnpm test:mcp-ui`                           | 30 passed                      |
+| `pnpm check:arch`                            | no violations, 9 passed        |
+| `pnpm check:deploy` (DEPLOY-01)              | 26 passed (real public values) |
+
+### Deployment and configuration
+
+| Step                             | Result                                                                                                                                                                                                                                                        |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.1 Vercel projects and hosts    | `sheet-music-for-ai-{web,api,mcp}`, root directories `apps/*`, Node 24.x; hostnames as planned; CSP `connect-src` lists the Supabase project and the API                                                                                                      |
+| 1. Migrations pushed             | dry run then push of the 5 migrations (score storage, draft cleanup, rate-limit store, maintenance schedule, access-token hook); both pg_cron jobs scheduled; `postgres` member of `score_owner`; `lower('É') = 'é'`                                          |
+| 2. Supabase configuration        | Enforce SSL on; ES256 in use; Site URL = web origin; Redirect URLs = `<web>/**` (no localhost); confirm email on; minimum password 8; OAuth 2.1 server on, authorization path `/oauth/consent`, dynamic registration on; custom SMTP NOT configured           |
+| TLS                              | Supabase Root 2021 CA from the official download, SHA-256 `80:70:25:AD:…:CA:FA`, identical to the root served by the pooler; `verify-full` to `aws-1-eu-west-3.pooler.supabase.com:6543` succeeds                                                             |
+| 3-4. Environment and deployments | web: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_BASE_URL`; api/mcp: `SUPABASE_URL`, `DATABASE_URL` (sensitive), `DATABASE_CA_CERT`, `NODEJS_HELPERS`; api `API_ALLOWED_ORIGINS`; mcp `MCP_PUBLIC_URL`, `MCP_AUTH_AUDIENCE_MODE=resource` |
+| 5. Hook                          | privilege check t,t,t,t,f,f,f; hook enabled; `mcp_resource` = `https://sheet-music-for-ai-mcp.vercel.app/mcp`; dry run: OAuth-client token aud `["authenticated", "<MCP>/mcp"]`, session token aud `"authenticated"`                                          |
+| 6. DEPLOY-02                     | `verify-deployment.ts`: 60/60 checks passed (web headers/CSP/assets, API health/version/401/CORS, MCP 401 challenge, RFC 9728 metadata, `/assets` headers)                                                                                                    |
+
+### Cloud suites
+
+- **OAUTH-04 (provider part): 13/13 passed** against the deployed stack: 401 challenge and RFC 9728 metadata; RFC 8414 metadata with S256 PKCE; public client from dynamic registration; supabase/auth#2820 probe HTTP 200 with and without `resource` (public and confidential clients); deny gives `access_denied` without code; approve after sign-in gives a code; PKCE token exchange; `aud` holds the MCP resource; `initialize`, `tools/list`, `create_score` accepted; a score saved through MCP is listed by `GET /scores` for the same account's web session; web session token refused at `/mcp`; OAuth token refused by the REST API; refresh keeps the audience. Synthetic user, scores and clients removed afterwards (0 users, 0 scores, 0 drafts; clients soft-deleted).
+- **AUTH-UI-I01: not run.** It sends a real sign-up and a real recovery mail; the project has no custom SMTP and Supabase's default sender only mails team members (2 mails/hour). Blocked on the SMTP decision.
+
+### Target-host check
+
+Not run: needs a person with an authorized Claude account (HOST_CHECK.md). This also decides the host CSP question (`font-src data:`, `'wasm-unsafe-eval'`).
+
+### ASSET-03 listening review
+
+Not run: needs a person (RELEASE_CHECKLIST step 9).
+
+### Owner sign-offs
+
+Pending: SoundFont provenance (AKAI samples' public-domain status rests on the upstream author's statement), ASSET-03 verdict, SMTP provider, branch protection, go/no-go. Decided by the owner on 2026-09-28/29: Supabase cloud project, three Vercel projects in team vibeworker1, audience mode `resource` with the access-token hook, OAuth server with dynamic registration.
