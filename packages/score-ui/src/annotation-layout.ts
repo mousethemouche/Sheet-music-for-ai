@@ -13,6 +13,9 @@
  *   (the same margin on the right as on the left), never less than the band:
  *   the band's height is reserved across the whole surface, so text past the
  *   end of a short, unjustified system covers nothing and wraps less;
+ * - but when the surface is wider than the visible width (the notation
+ *   scrolls sideways in a narrow pane), the stack keeps to the visible width,
+ *   with the same margins, so the text wraps where it can be read;
  * - each label starts at the leftmost of its notes in that system, but never
  *   further right than half the stack, so it always keeps at least half the
  *   stack width to wrap in;
@@ -39,11 +42,25 @@ export interface AnnotationBandPlacement {
   readonly labels: readonly AnnotationLabel[];
 }
 
+/** Narrowest stack a visible-width clamp may leave, in CSS px. */
+const MIN_STACK_WIDTH = 120;
+
+/**
+ * `visibleWidth`: CSS px of the surface the viewer sees without scrolling
+ * (the scroll container's width); 0 or omitted means no clamp.
+ */
 export function placeAnnotations(
   annotations: readonly Annotation[],
   layout: LayoutMap,
+  visibleWidth = 0,
 ): AnnotationBandPlacement[] {
-  const stackWidth = (band: Bounds): number => Math.max(band.width, layout.width - 2 * band.x);
+  const stackWidth = (band: Bounds): number => {
+    const width = Math.max(band.width, layout.width - 2 * band.x);
+    if (visibleWidth <= 0 || visibleWidth >= layout.width) {
+      return width;
+    }
+    return Math.min(width, Math.max(MIN_STACK_WIDTH, visibleWidth - 2 * band.x));
+  };
   const labelsBySystem = new Map<string, AnnotationLabel[]>();
   for (const annotation of annotations) {
     const notes = annotation.noteIds.flatMap((id): NoteLayout[] => {

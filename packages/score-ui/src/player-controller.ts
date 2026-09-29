@@ -53,7 +53,13 @@ export interface PlayerView {
   readonly playFailed: boolean;
   /** Tallest measured annotation stack in CSS px (rounded up): the band height requested. */
   readonly bandHeight: number;
+  /** Note IDs of the playback highlight, as last sent to the renderer. */
+  readonly highlight: readonly string[];
+  /** Available width in CSS px (the visible part of the notation); 0 while hidden. */
+  readonly width: number;
 }
+
+const NO_NOTES: readonly string[] = [];
 
 const INITIAL_VIEW: PlayerView = {
   score: null,
@@ -65,6 +71,8 @@ const INITIAL_VIEW: PlayerView = {
   loadFailed: false,
   playFailed: false,
   bandHeight: 0,
+  highlight: NO_NOTES,
+  width: 0,
 };
 
 const DETACHED: Partial<PlayerView> = {
@@ -74,9 +82,8 @@ const DETACHED: Partial<PlayerView> = {
   playback: null,
   loadFailed: false,
   playFailed: false,
+  highlight: NO_NOTES,
 };
-
-const NO_NOTES: readonly string[] = [];
 
 interface Session {
   readonly ports: ScorePlayerPorts;
@@ -223,6 +230,7 @@ export class PlayerController {
     const next = Number.isFinite(width) ? Math.max(0, Math.floor(width)) : 0;
     if (next !== this.width) {
       this.width = next;
+      this.patch({ width: next });
       this.rerender();
     }
   }
@@ -380,6 +388,7 @@ export class PlayerController {
     if (!sameIds(noteIds, session.highlight)) {
       session.highlight = noteIds;
       session.renderer.setPlaybackHighlight(noteIds);
+      this.patch({ highlight: noteIds });
     }
   }
 

@@ -17,14 +17,16 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { placeAnnotations } from './annotation-layout';
+import { placePlaybackBands } from './playback-band';
 import {
   type PlayerView,
   PlayerController,
   isAudioUnavailable,
   isPlayable,
 } from './player-controller';
+import { PLAYER_CSS, STYLESHEET_HREF, STYLESHEET_PRECEDENCE } from './styles';
 import { PALETTES } from './theme';
-import type { ScorePlayerProps, ScorePlayerTheme } from './types';
+import type { ScorePlayerProps } from './types';
 
 const TEMPO_PERCENT = {
   min: Math.round(TEMPO_MULTIPLIER_RANGE.min * 100),
@@ -32,9 +34,15 @@ const TEMPO_PERCENT = {
   step: 5,
 };
 
-export function ScorePlayer({ artifact, ports, theme = 'light' }: ScorePlayerProps): ReactElement {
+export function ScorePlayer({
+  artifact,
+  ports,
+  theme = 'light',
+  controlsPosition = 'bottom',
+}: ScorePlayerProps): ReactElement {
   const [controller] = useState(() => new PlayerController());
   const view = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+  const [overflow, setOverflow] = useState<Overflow>(NO_OVERFLOW);
   const scrollRef = useRef<HTMLDivElement>(null);
   const targetRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -96,6 +104,20 @@ export function ScorePlayer({ artifact, ports, theme = 'light' }: ScorePlayerPro
     controller.setBandHeight(tallest);
   });
 
+  // Which sides of the notation are scrolled out of view: the sheet shows a
+  // fade there, the cue that it scrolls sideways (a thin scrollbar is
+  // invisible on touch screens). Measured after every render and on scroll.
+  const measureOverflow = (): void => {
+    const element = scrollRef.current;
+    if (element !== null) {
+      const next = overflowOf(element);
+      setOverflow((current) =>
+        current.start === next.start && current.end === next.end ? current : next,
+      );
+    }
+  };
+  useLayoutEffect(measureOverflow);
+
   const { score, renderedScore, layout, playback } = view;
   const playing = playback?.state === 'playing';
   const playable = isPlayable(view);
@@ -108,19 +130,44 @@ export function ScorePlayer({ artifact, ports, theme = 'light' }: ScorePlayerPro
       : `${tempoPercent}% (${Math.round((score.tempo.bpm * tempoPercent) / 100)} BPM)`;
   const bands =
     layout !== null && renderedScore !== null
-      ? placeAnnotations(renderedScore.annotations, layout)
+      ? placeAnnotations(renderedScore.annotations, layout, view.width)
       : [];
+  const playbackBands =
+    layout !== null && renderedScore !== null ? placePlaybackBands(view.highlight, layout) : [];
+  const ink = PALETTES[theme].ink;
   const title = score?.metadata.title;
   const problems = describeProblems(view, audioUnavailable);
+  const status = describeStatus(view, playable, audioUnavailable);
+  const tempoFill = (tempoPercent - TEMPO_PERCENT.min) / (TEMPO_PERCENT.max - TEMPO_PERCENT.min);
 
-  return (
-    <section
-      aria-label={title === undefined ? 'Score player' : `Score player: ${title}`}
-      style={rootStyle(theme)}
+  const sheet = (
+    <div
+      className="smp-sheet"
+      data-blank={renderedScore === null ? '' : undefined}
+      data-overflow-start={overflow.start ? '' : undefined}
+      data-overflow-end={overflow.end ? '' : undefined}
     >
-      <div ref={scrollRef} style={SCROLL_STYLE}>
+      <div ref={scrollRef} className="smp-scroll" style={SCROLL_STYLE} onScroll={measureOverflow}>
+        {/* Behind the notation (painted first): where playback is. Decorative. */}
+        <div aria-hidden="true" style={overlayStyle(layout?.width ?? 0, layout?.height ?? 0)}>
+          {playbackBands.map(({ systemId, bounds }) => (
+            <div
+              key={systemId}
+              className="smp-playback-band"
+              data-playback-band=""
+              style={{
+                position: 'absolute',
+                left: bounds.x,
+                top: bounds.y,
+                width: bounds.width,
+                height: bounds.height,
+              }}
+            />
+          ))}
+        </div>
         <div
           ref={targetRef}
+          className="smp-notation"
           role="img"
           aria-label={title === undefined ? 'Music notation' : `Music notation: ${title}`}
         />
@@ -138,10 +185,18 @@ export function ScorePlayer({ artifact, ports, theme = 'light' }: ScorePlayerPro
               }}
             >
               {labels.map((label) => (
+                // The text is in the paper's ink (readable on it whatever the
+                // teaching color); the swatch carries the teaching color.
                 <p
                   key={label.annotationId}
-                  style={{ ...LABEL_STYLE, paddingLeft: label.indent, color: label.color }}
+                  className="smp-annotation"
+                  style={{ ...LABEL_STYLE, paddingLeft: label.indent, color: ink }}
                 >
+                  <span
+                    aria-hidden="true"
+                    className="smp-annotation-swatch"
+                    style={{ backgroundColor: label.color }}
+                  />
                   {label.text}
                 </p>
               ))}
@@ -149,81 +204,151 @@ export function ScorePlayer({ artifact, ports, theme = 'light' }: ScorePlayerPro
           ))}
         </div>
       </div>
-      <div role="group" aria-label="Playback controls" style={CONTROLS_STYLE}>
+    </div>
+  );
+
+  const controls = (
+    <>
+      <div role="group" aria-label="Playback controls" className="smp-controls">
         <button
           type="button"
+          className="smp-button smp-button--primary"
           disabled={!playing && !playable}
           onClick={playing ? controller.pause : controller.play}
-          style={buttonStyle(!playing && !playable)}
         >
+          {playing ? <PauseIcon /> : <PlayIcon />}
           {playing ? 'Pause' : 'Play'}
         </button>
-        <label style={FIELD_STYLE}>
-          Tempo
-          <input
-            type="range"
-            min={TEMPO_PERCENT.min}
-            max={TEMPO_PERCENT.max}
-            step={TEMPO_PERCENT.step}
-            value={tempoPercent}
-            aria-valuetext={tempoText}
-            disabled={!settingsEnabled}
-            onChange={(event) => {
-              controller.setTempo(Number(event.currentTarget.value) / 100);
-            }}
-          />
-        </label>
-        {/* Visual readout; assistive technology reads the slider's aria-valuetext. */}
-        <span aria-hidden="true">{tempoText}</span>
-        <label style={FIELD_STYLE}>
+        <div className="smp-tempo">
+          <label className="smp-field">
+            <span>Tempo</span>
+            <input
+              type="range"
+              className="smp-range"
+              min={TEMPO_PERCENT.min}
+              max={TEMPO_PERCENT.max}
+              step={TEMPO_PERCENT.step}
+              value={tempoPercent}
+              aria-valuetext={tempoText}
+              disabled={!settingsEnabled}
+              onChange={(event) => {
+                controller.setTempo(Number(event.currentTarget.value) / 100);
+              }}
+              style={fillStyle(tempoFill)}
+            />
+          </label>
+          {/* Visual readout; assistive technology reads the slider's aria-valuetext. */}
+          <span aria-hidden="true" className="smp-tempo-value">
+            {tempoText}
+          </span>
+        </div>
+        <label className="smp-field">
           <input
             type="checkbox"
+            className="smp-switch"
             checked={playback?.loop ?? false}
             disabled={!settingsEnabled}
             onChange={(event) => {
               controller.setLoop(event.currentTarget.checked);
             }}
           />
-          Loop
+          <span>Loop</span>
         </label>
       </div>
-      <p role="status" style={STATUS_STYLE}>
-        {describeStatus(view, playable, audioUnavailable)}
+      <p role="status" className="smp-status" data-state={status.state}>
+        <span aria-hidden="true" className="smp-status-dot" />
+        {status.text}
       </p>
-      <div role="alert" style={ALERT_STYLE}>
+      <div role="alert" className="smp-alert">
         {problems.map((problem) => (
-          <p key={problem} style={{ margin: 0 }}>
-            {problem}
-          </p>
+          <p key={problem}>{problem}</p>
         ))}
         {audioUnavailable && (
-          <button type="button" onClick={controller.retryAudio} style={buttonStyle(false)}>
+          <button
+            type="button"
+            className="smp-button smp-button--secondary"
+            onClick={controller.retryAudio}
+          >
             Retry audio
           </button>
         )}
       </div>
+    </>
+  );
+
+  const classes = ['smp-player'];
+  if (theme === 'dark') classes.push('smp-player--dark');
+  if (controlsPosition === 'top') classes.push('smp-player--controls-top');
+
+  return (
+    <section
+      aria-label={title === undefined ? 'Score player' : `Score player: ${title}`}
+      className={classes.join(' ')}
+    >
+      {/* Hoisted to <head> by React and shared by every player (styles.ts). */}
+      <style href={STYLESHEET_HREF} precedence={STYLESHEET_PRECEDENCE}>
+        {PLAYER_CSS}
+      </style>
+      {controlsPosition === 'top' ? (
+        <>
+          {controls}
+          {sheet}
+        </>
+      ) : (
+        <>
+          {sheet}
+          {controls}
+        </>
+      )}
     </section>
   );
 }
 
-function describeStatus(view: PlayerView, playable: boolean, audioUnavailable: boolean): string {
+/** Decorative: the button's accessible name is its text. */
+function PlayIcon(): ReactElement {
+  return (
+    <svg className="smp-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M5 3.37v9.26a.87.87 0 0 0 1.33.74l7.2-4.63a.87.87 0 0 0 0-1.48l-7.2-4.63A.87.87 0 0 0 5 3.37z" />
+    </svg>
+  );
+}
+
+function PauseIcon(): ReactElement {
+  return (
+    <svg className="smp-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="3.5" y="2.5" width="3" height="11" rx="0.75" />
+      <rect x="9.5" y="2.5" width="3" height="11" rx="0.75" />
+    </svg>
+  );
+}
+
+/** What the status dot shows next to the status text. */
+type StatusState = 'idle' | 'loading' | 'playing' | 'problem';
+
+function describeStatus(
+  view: PlayerView,
+  playable: boolean,
+  audioUnavailable: boolean,
+): { readonly text: string; readonly state: StatusState } {
   const state = view.playback?.state;
   if (view.score === null) {
-    return 'No score to play';
+    return { text: 'No score to play', state: 'idle' };
   }
   if (state === 'playing') {
-    return 'Playing';
+    return { text: 'Playing', state: 'playing' };
   }
   if (state === 'paused') {
-    return 'Paused';
+    return { text: 'Paused', state: 'idle' };
   }
   if (audioUnavailable) {
-    return 'Audio unavailable';
+    return { text: 'Audio unavailable', state: 'problem' };
   }
   if (playable) {
-    return 'Ready';
+    return { text: 'Ready', state: 'idle' };
   }
-  return view.renderFailed ? 'Notation unavailable' : 'Loading';
+  return view.renderFailed
+    ? { text: 'Notation unavailable', state: 'problem' }
+    : { text: 'Loading', state: 'loading' };
 }
 
 function describeProblems(view: PlayerView, audioUnavailable: boolean): string[] {
@@ -251,45 +376,34 @@ function describeProblems(view: PlayerView, audioUnavailable: boolean): string[]
   return problems;
 }
 
-function rootStyle(theme: ScorePlayerTheme): CSSProperties {
-  const palette = PALETTES[theme];
-  const variables: Record<`--smp-${string}`, string> = {
-    '--smp-surface': palette.surface,
-    '--smp-ink': palette.ink,
-    '--smp-muted': palette.muted,
-    '--smp-accent': palette.accent,
-    '--smp-danger': palette.danger,
-  };
-  return {
-    ...(variables as CSSProperties),
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-    minWidth: 0,
-    color: 'var(--smp-ink)',
-    background: 'var(--smp-surface)',
-  };
+/** Sides of the notation scrolled out of view. */
+interface Overflow {
+  readonly start: boolean;
+  readonly end: boolean;
+}
+
+const NO_OVERFLOW: Overflow = { start: false, end: false };
+
+function overflowOf(element: HTMLElement): Overflow {
+  const hidden = element.scrollWidth - element.clientWidth;
+  if (hidden <= 1) {
+    return NO_OVERFLOW;
+  }
+  return { start: element.scrollLeft > 1, end: element.scrollLeft < hidden - 1 };
 }
 
 function overlayStyle(width: number, height: number): CSSProperties {
   return { position: 'absolute', left: 0, top: 0, width, height, pointerEvents: 'none' };
 }
 
-function buttonStyle(disabled: boolean): CSSProperties {
-  return {
-    minWidth: 72,
-    minHeight: 36,
-    padding: '0 16px',
-    borderRadius: 18,
-    border: '1px solid var(--smp-accent)',
-    background: 'var(--smp-accent)',
-    color: 'var(--smp-surface)',
-    font: 'inherit',
-    cursor: disabled ? 'default' : 'pointer',
-    opacity: disabled ? 0.5 : 1,
-  };
+/** How much of the slider track is filled (0..1), read by the stylesheet. */
+function fillStyle(fraction: number): CSSProperties {
+  const percent = Math.min(1, Math.max(0, fraction)) * 100;
+  return { '--_smp-fill': `${percent}%` } as CSSProperties;
 }
 
+// Inline: the controller measures this element's width and the overlay is
+// positioned in its coordinate space (no padding or border here).
 const SCROLL_STYLE: CSSProperties = { position: 'relative', overflowX: 'auto', width: '100%' };
 
 const LABEL_STYLE: CSSProperties = {
@@ -298,29 +412,4 @@ const LABEL_STYLE: CSSProperties = {
   lineHeight: 1.35,
   overflowWrap: 'anywhere',
   pointerEvents: 'auto',
-};
-
-const CONTROLS_STYLE: CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  alignItems: 'center',
-  gap: '8px 16px',
-};
-
-const FIELD_STYLE: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 8,
-  accentColor: 'var(--smp-accent)',
-};
-
-const STATUS_STYLE: CSSProperties = { margin: 0, color: 'var(--smp-muted)', fontSize: '0.875rem' };
-
-const ALERT_STYLE: CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  alignItems: 'center',
-  gap: 8,
-  color: 'var(--smp-danger)',
-  fontSize: '0.875rem',
 };

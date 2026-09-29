@@ -1,9 +1,11 @@
 /**
  * UI-02 annotations (#7): each teaching annotation gets one plain-text label
- * in its own color, in the band reserved above the system holding its notes,
- * never over staff or system bounds; multiline and stacked labels get a band
- * tall enough (second pass). The playback highlight is transient and gives
- * notes back their teaching color.
+ * marked with its own color (the text in the paper's ink, AA whatever the
+ * teaching color; a decorative swatch in the teaching color), in the band
+ * reserved above the system holding its notes, never over staff or system
+ * bounds; multiline and stacked labels get a band tall enough (second pass).
+ * The playback highlight is transient, gives notes back their teaching color,
+ * and draws a band behind the sounding notes.
  *
  * Geometry comes from the fake renderer's fixed grid and a fixed 8 px / 20 px
  * text metric: this proves our band arithmetic, not real font geometry
@@ -40,6 +42,26 @@ function stackBox(label: HTMLElement, layout: LayoutMap) {
   return { left: Number.parseFloat(stack.style.left), top: bottom - height, bottom };
 }
 
+/** The label's text is in the ink; its decorative swatch carries the teaching color. */
+function expectTeachingLabel(label: HTMLElement, color: string, ink: string | undefined): void {
+  expect(ink).toBeDefined();
+  expect(label).toHaveStyle({ color: ink });
+  const swatch = label.querySelector('[aria-hidden="true"]');
+  expect(swatch).not.toBeNull();
+  expect(swatch).toHaveStyle({ backgroundColor: color });
+  expect(swatch).toHaveTextContent('');
+}
+
+/** The playback band rectangles, in LayoutMap coordinates. */
+function playbackBands(): { left: number; top: number; width: number; height: number }[] {
+  return [...document.querySelectorAll<HTMLElement>('[data-playback-band]')].map((band) => ({
+    left: Number.parseFloat(band.style.left),
+    top: Number.parseFloat(band.style.top),
+    width: Number.parseFloat(band.style.width),
+    height: Number.parseFloat(band.style.height),
+  }));
+}
+
 function system(layout: LayoutMap, index: number): SystemLayout {
   const found = layout.systems[index];
   if (found === undefined) {
@@ -64,7 +86,7 @@ describe('UI-02 annotations', () => {
 
     const label = screen.getByText(F09_TEXT);
     expect(label).toBeVisible();
-    expect(label).toHaveStyle({ color: PINK });
+    expectTeachingLabel(label, PINK, renderer.displayed?.options.theme.ink);
     // 36 characters in a 200 px band starting 20 px in: two 20 px lines.
     expect(renderer.calls.at(-1)?.options.annotationBandHeight).toBe(2 * LINE_HEIGHT);
     const box = stackBox(label, layout);
@@ -118,17 +140,39 @@ describe('UI-02 annotations', () => {
     const ink = renderer.displayed?.options.theme.ink;
     const colors = () => ['f09-n1', 'f09-n2', 'f09-n3', 'f09-n4'].map((id) => renderer.colorOf(id));
 
+    const layout = renderer.layout;
+    const staves = system(layout, 0).staves;
+    const staffTop = Math.min(...staves.map((staff) => staff.bounds.y));
+    const staffBottom = Math.max(...staves.map((staff) => staff.bounds.y + staff.bounds.height));
+    /** One band around the note, from above the top staff to below the bottom one. */
+    const bandAround = (noteId: string) => {
+      const note = layout.notes.get(noteId)?.bounds;
+      if (note === undefined) throw new Error(`note ${noteId} not laid out`);
+      return [
+        {
+          left: note.x - 6,
+          top: staffTop - 8,
+          width: note.width + 12,
+          height: staffBottom - staffTop + 16,
+        },
+      ];
+    };
+    expect(playbackBands()).toEqual([]);
+
     await player.user.click(ui.playToggle());
     expect(colors()).toEqual([highlight, PINK, PINK, ink]);
+    expect(playbackBands()).toEqual(bandAround('f09-n1'));
 
     await player.drive(() => {
       engine.advance(2900);
     });
     expect(colors()).toEqual([PINK, PINK, PINK, highlight]);
+    expect(playbackBands()).toEqual(bandAround('f09-n4'));
 
     await player.user.click(ui.playToggle());
     expect(engine.getSnapshot().state).toBe('paused');
     expect(colors()).toEqual([PINK, PINK, PINK, highlight]);
+    expect(playbackBands()).toEqual(bandAround('f09-n4'));
 
     await player.user.click(ui.playToggle());
     await player.drive(() => {
@@ -136,7 +180,8 @@ describe('UI-02 annotations', () => {
     });
     expect(engine.getSnapshot().state).toBe('ready');
     expect(colors()).toEqual([PINK, PINK, PINK, ink]);
-    expect(screen.getByText(F09_TEXT)).toHaveStyle({ color: PINK });
+    expect(playbackBands()).toEqual([]);
+    expectTeachingLabel(screen.getByText(F09_TEXT), PINK, ink);
   });
 
   test('stacked multiline labels get a band tall enough and stay off the staff', async () => {
@@ -151,7 +196,7 @@ describe('UI-02 annotations', () => {
     expect(target.annotationBand.height).toBe(4 * LINE_HEIGHT);
     for (const label of [first, second]) {
       expect(label).toBeVisible();
-      expect(label).toHaveStyle({ color: PINK });
+      expectTeachingLabel(label, PINK, player.renderer.displayed?.options.theme.ink);
     }
     expect(first.parentElement).toBe(second.parentElement);
     expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -197,7 +242,7 @@ describe('UI-02 annotations', () => {
 
     const label = screen.getByText('Both hands land on C');
     expect(label).toBeVisible();
-    expect(label).toHaveStyle({ color: '#1e90ff' });
+    expectTeachingLabel(label, '#1e90ff', player.renderer.displayed?.options.theme.ink);
     expect(top.annotationBand.height).toBe(0);
     const box = stackBox(label, layout);
     expect(box.top).toBeGreaterThanOrEqual(bottom.annotationBand.y);

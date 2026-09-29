@@ -7,6 +7,7 @@
 export { ScorePlayer } from './score-player';
 export type {
   ScorePlayerArtifact,
+  ScorePlayerControlsPosition,
   ScorePlayerPorts,
   ScorePlayerProps,
   ScorePlayerTheme,

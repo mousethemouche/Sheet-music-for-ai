@@ -89,7 +89,8 @@ rejects when a renewal could not reach the provider.
 - States are distinct and accessible: one `role="status"` line (loading,
   "Showing N of M saved/matching scores.", "Your library is empty...", "No
   saved scores match your search.") and a `role="alert"` block for failures.
-  A failure never shows the empty or no-match text.
+  A failure never shows the empty or no-match text. An empty library (no
+  search active) shows its empty state without the search form.
 - Each summary: the title as a link to `/scores/<id>`, "Updated <date>"
   (`<time datetime>`), and each tag as a "Filter by tag X" button. Titles and
   tags are React text, never markup.

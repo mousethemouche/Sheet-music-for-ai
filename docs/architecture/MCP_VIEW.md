@@ -170,8 +170,11 @@ View-side change removes the WebAssembly need of the pinned processor.
   player (view-state, MCP-U01).
 - **Errors.** A rejected call (`isError`, the server envelope), an unreadable
   result or a cancellation shows a notice (`role="alert"`) and keeps the last
-  valid score and its audio. Text is rendered as React text only. The
-  player's own problems (invalid update, render or audio failure) are in its
+  valid score and its audio. Text is rendered as React text only. A
+  rejection reads `The request was rejected: <envelope message>` followed by
+  up to three detail messages (a `Details` list); the error code is the
+  notice's `data-error-code`, not part of its text. The player's own
+  problems (invalid update, render or audio failure) are in its
   `role="alert"`.
 - **Audio.** Only the user's Play starts output: score-ui calls `play()` in
   the click handler and the engine resumes its AudioContext there.
@@ -181,6 +184,12 @@ View-side change removes the WebAssembly need of the pinned processor.
   variables and fonts are applied to the root.
 - **Width.** `containerDimensions` sets the root's width or max width; the
   player follows its container through its own ResizeObserver and re-renders.
+  The root has 16 px side padding, 8 px when the frame is 400 px wide or
+  less; notation wider than that scrolls sideways with a fade cue
+  (DESIGN_SYSTEM.md §4).
+- **Layout.** Title, tags and state, then the player with its controls
+  above the notation (`controlsPosition="top"`): the host grows the frame
+  to the View's height, so Play is never below the fold. Sound credits last.
   Size changes are reported to the host (`ui/notifications/size-changed`).
 - **Credits.** The SoundFont `attribution` and a link to the published
   `LICENSE.txt`, opened through the host (`ui/open-link`).

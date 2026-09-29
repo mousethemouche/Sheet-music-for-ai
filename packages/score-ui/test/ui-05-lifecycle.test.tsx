@@ -80,7 +80,10 @@ describe('UI-05 host context', () => {
       '#ff69b4',
       dark?.ink,
     ]);
-    expect(screen.getByText(F09_TEXT)).toHaveStyle({ color: '#ff69b4' });
+    // The label's text follows the ink (readable on the dark paper); its swatch keeps the teaching color.
+    const label = screen.getByText(F09_TEXT);
+    expect(label).toHaveStyle({ color: dark?.ink });
+    expect(label.querySelector('[aria-hidden="true"]')).toHaveStyle({ backgroundColor: '#ff69b4' });
     expect(engine.loads.map((plan) => plan.revision)).toEqual([1]);
     expect(ui.status()).toHaveTextContent('Ready');
   });

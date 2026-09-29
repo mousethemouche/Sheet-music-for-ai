@@ -14,6 +14,13 @@ import type { ScoreRendererFactory } from '@sheet-music/renderer-core';
 export type ScorePlayerTheme = 'light' | 'dark';
 
 /**
+ * Where the playback controls (with the status line and problems) sit:
+ * under the notation (`bottom`, the default) or above it (`top`, for a host
+ * whose frame grows with its content, so Play is never below the fold).
+ */
+export type ScorePlayerControlsPosition = 'top' | 'bottom';
+
+/**
  * The score result the player displays: structurally compatible with the
  * `ScoreArtifact` of `@sheet-music/music-contracts` (draft or saved), so an
  * app passes the tool or HTTP result as is. `score` is untrusted: the player
@@ -54,4 +61,6 @@ export interface ScorePlayerProps {
   readonly ports: ScorePlayerPorts;
   /** Defaults to `light`. */
   readonly theme?: ScorePlayerTheme;
+  /** Defaults to `bottom`. */
+  readonly controlsPosition?: ScorePlayerControlsPosition;
 }
