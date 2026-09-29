@@ -1,8 +1,12 @@
 /**
- * Transport-neutral error contract (APPLICATION_LAYER.md §6).
+ * Transport-neutral error contract (APPLICATION_LAYER.md §6,
+ * ERRORS_AND_SECURITY.md §1).
  *
  * Every failure a client can see is `{ code, message, details?, correlationId? }`.
- * Codes are the domain codes of music-domain plus the application codes below.
+ * Use cases fail with the domain codes of music-domain plus the application
+ * codes below (`ErrorCode`). The HTTP layer adds the transport codes of
+ * request protection, raised before any use case runs. The envelope accepts
+ * both, so a client can parse every error body either transport sends.
  * Messages and details never echo free text from the request.
  */
 import {
@@ -25,8 +29,26 @@ export const APPLICATION_ERROR_CODES = [
 ] as const;
 export type ApplicationErrorCode = (typeof APPLICATION_ERROR_CODES)[number];
 
+/** Codes a use case can fail with: domain plus application codes. */
 export const ERROR_CODES = [...DOMAIN_ERROR_CODES, ...APPLICATION_ERROR_CODES] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
+
+/**
+ * Codes of request protection (Origin policy, body cap, rate limits), sent
+ * by the HTTP layer of both apps before any use case runs. Never a use-case
+ * result, so they are not part of `ErrorCode`.
+ */
+export const TRANSPORT_ERROR_CODES = [
+  'FORBIDDEN_ORIGIN',
+  'LENGTH_REQUIRED',
+  'PAYLOAD_TOO_LARGE',
+  'RATE_LIMITED',
+] as const;
+export type TransportErrorCode = (typeof TRANSPORT_ERROR_CODES)[number];
+
+/** Every code an error envelope can carry. */
+export const ENVELOPE_ERROR_CODES = [...ERROR_CODES, ...TRANSPORT_ERROR_CODES] as const;
+export type EnvelopeErrorCode = (typeof ENVELOPE_ERROR_CODES)[number];
 
 /** One problem: a detail code, a JSON path into the request or document, a safe message, optional IDs. */
 export type ErrorDetail = DomainErrorDetail;
@@ -40,7 +62,7 @@ export const errorDetailSchema = z.strictObject({
 
 /** The serialized error of every transport (MCP tool error, HTTP error body). */
 export const errorEnvelopeSchema = z.strictObject({
-  code: z.enum(ERROR_CODES),
+  code: z.enum(ENVELOPE_ERROR_CODES),
   message: z.string(),
   details: z.array(errorDetailSchema).optional(),
   correlationId: z.string().optional(),

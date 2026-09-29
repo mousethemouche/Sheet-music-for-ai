@@ -2,8 +2,8 @@
  * OAUTH-02, unit part (issue #26): the pure discovery builders the MCP app
  * mounts. Expected values are written from RFC 9728 §2/§3.1, RFC 6750 §2.1/§3
  * and the MCP authorization spec. That the metadata is actually reachable and
- * that /mcp answers 401 with this challenge is the OAUTH-02 integration test
- * of the wiring phase.
+ * that /mcp answers 401 with this challenge is OAUTH-02 wire
+ * (apps/mcp/test/oauth-02-mcp-auth.int.test.ts).
  */
 import { describe, expect, it } from 'vitest';
 import {

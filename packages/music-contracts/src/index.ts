@@ -22,11 +22,15 @@ export {
 } from './artifacts';
 export {
   type ApplicationErrorCode,
+  type EnvelopeErrorCode,
   type ErrorCode,
   type ErrorDetail,
   type ErrorEnvelope,
+  type TransportErrorCode,
   APPLICATION_ERROR_CODES,
+  ENVELOPE_ERROR_CODES,
   ERROR_CODES,
+  TRANSPORT_ERROR_CODES,
   errorDetailSchema,
   errorEnvelopeSchema,
   inputIssueDetails,
