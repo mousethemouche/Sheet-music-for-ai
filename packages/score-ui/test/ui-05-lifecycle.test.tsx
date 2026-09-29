@@ -1,6 +1,7 @@
 /**
  * UI-05 lifecycle and host context (#7): resizing, including a hidden width
  * of 0, and host theme changes keep the score, its revision and playback;
+ * the controls sit where the host asks (controlsPosition);
  * StrictMode double mounting, unmounting and late port results leave exactly
  * one live renderer/engine while mounted, and no listener, audio or update
  * after unmount.
@@ -8,6 +9,7 @@
 import { F09 } from '@sheet-music/test-fixtures';
 import { screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { PALETTES } from '../src/theme';
 import { artifactOf, installTextMetrics, mountPlayer, settle, ui } from './harness';
 
 const F09_TEXT = 'C major triad: root, third and fifth';
@@ -67,9 +69,16 @@ describe('UI-05 host context', () => {
     const player = await mountPlayer(artifactOf(F09), { theme: 'light' });
     const { renderer, engine } = player;
     const light = renderer.displayed?.options.theme;
+    expect(ui.region()).toHaveClass('light');
 
     await player.setTheme('dark');
 
+    // The theme class re-scopes the design tokens of the chrome; the paper follows the prop.
+    expect(ui.region()).toHaveClass('dark');
+    expect(ui.region()).not.toHaveClass('light');
+    expect(ui.notation().parentElement?.parentElement).toHaveStyle({
+      backgroundColor: PALETTES.dark.paper,
+    });
     const dark = renderer.displayed?.options.theme;
     expect(dark).toBeDefined();
     expect(dark?.ink).not.toBe(light?.ink);
@@ -87,6 +96,34 @@ describe('UI-05 host context', () => {
     expect(engine.loads.map((plan) => plan.revision)).toEqual([1]);
     expect(ui.status()).toHaveTextContent('Ready');
   });
+});
+
+describe('UI-05 controls position', () => {
+  test.each([
+    { position: undefined, name: 'by default', controlsFirst: false },
+    { position: 'bottom', name: 'bottom', controlsFirst: false },
+    { position: 'top', name: 'top', controlsFirst: true },
+  ] as const)(
+    '$name: controls, status and problems come after the notation unless top (DOM and focus order)',
+    async ({ position, controlsFirst }) => {
+      await mountPlayer(
+        artifactOf(F09),
+        position === undefined ? {} : { controlsPosition: position },
+      );
+      const notation = ui.notation();
+
+      for (const element of [
+        screen.getByRole('group', { name: 'Playback controls' }),
+        ui.status(),
+        ui.alert(),
+      ]) {
+        const before = Boolean(
+          notation.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_PRECEDING,
+        );
+        expect(before).toBe(controlsFirst);
+      }
+    },
+  );
 });
 
 describe('UI-05 lifecycle', () => {

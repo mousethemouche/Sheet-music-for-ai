@@ -9,7 +9,6 @@
  * scores), unless it is a stale revision of a score shown earlier.
  */
 import type { ScoreSpecInput } from '@sheet-music/music-domain';
-import { fireEvent } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PEDALLED, type Player, artifactOf, mountPlayer, ui } from './harness';
 
@@ -123,8 +122,10 @@ describe('UI-03 newer revision (P-01)', () => {
     },
     {
       name: 'a local tempo change',
-      change: () => {
-        fireEvent.change(ui.tempo(), { target: { value: '60' } });
+      change: async (player) => {
+        ui.tempo().focus();
+        await player.user.keyboard('{ArrowLeft>8/}');
+        expect(player.engine.getSnapshot().tempoMultiplier).toBe(0.6);
       },
     },
   ])('$name does not reset playback', async ({ change }) => {

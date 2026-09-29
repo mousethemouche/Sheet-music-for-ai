@@ -12,6 +12,7 @@ import { StrictMode } from 'react';
 import { vi } from 'vitest';
 import {
   type ScorePlayerArtifact,
+  type ScorePlayerControlsPosition,
   type ScorePlayerPorts,
   type ScorePlayerTheme,
   ScorePlayer,
@@ -51,32 +52,43 @@ export function artifactOf(
 
 // --- ResizeObserver -------------------------------------------------------
 
+/** The player's notation viewport: the element whose width the player observes. */
+const VIEWPORT = '[data-player-viewport]';
+
 /**
  * jsdom has no ResizeObserver. This one reports `width` for every observed
  * element, synchronously on observe() (a browser reports the initial size
- * too) and on setWidth().
+ * too) and on setWidth(). It keeps its targets, as a browser does: `unobserve`
+ * drops one, `disconnect` drops all. The Radix slider of the Tempo control
+ * observes its thumb too (and releases it with `unobserve`), so
+ * `observerCount` counts only the observers watching the player's viewport.
  */
 export function installResizeObserver(initialWidth: number): {
   readonly observerCount: number;
   setWidth(width: number): void;
 } {
   let width = initialWidth;
-  const active = new Set<FakeResizeObserver>();
+  const created = new Set<FakeResizeObserver>();
   class FakeResizeObserver {
-    private readonly targets: Element[] = [];
-    constructor(private readonly callback: ResizeObserverCallback) {}
+    readonly targets = new Set<Element>();
+    constructor(private readonly callback: ResizeObserverCallback) {
+      created.add(this);
+    }
     observe(target: Element): void {
-      this.targets.push(target);
-      active.add(this);
+      this.targets.add(target);
       this.notify();
     }
-    unobserve(): void {}
+    unobserve(target: Element): void {
+      this.targets.delete(target);
+    }
     disconnect(): void {
-      active.delete(this);
-      this.targets.length = 0;
+      this.targets.clear();
     }
     notify(): void {
-      const entries = this.targets.map(
+      if (this.targets.size === 0) {
+        return;
+      }
+      const entries = [...this.targets].map(
         (target) => ({ target, contentRect: { width } }) as unknown as ResizeObserverEntry,
       );
       this.callback(entries, this);
@@ -85,11 +97,13 @@ export function installResizeObserver(initialWidth: number): {
   vi.stubGlobal('ResizeObserver', FakeResizeObserver);
   return {
     get observerCount() {
-      return active.size;
+      return [...created].filter((observer) =>
+        [...observer.targets].some((target) => target.matches(VIEWPORT)),
+      ).length;
     },
     setWidth(next: number) {
       width = next;
-      for (const observer of [...active]) {
+      for (const observer of [...created]) {
         observer.notify();
       }
     },
@@ -134,6 +148,7 @@ export function installTextMetrics(): void {
 export interface MountOptions {
   readonly width?: number;
   readonly theme?: ScorePlayerTheme;
+  readonly controlsPosition?: ScorePlayerControlsPosition;
   readonly strict?: boolean;
   readonly setupRenderer?: (renderer: FakeScoreRenderer) => void;
   readonly setupEngine?: (engine: FakePlaybackEngine) => void;
@@ -189,7 +204,16 @@ export async function mountPlayer(
   let current = artifact;
   let theme = options.theme ?? 'light';
   const element = () => {
-    const player = <ScorePlayer artifact={current} ports={ports} theme={theme} />;
+    const player = (
+      <ScorePlayer
+        artifact={current}
+        ports={ports}
+        theme={theme}
+        {...(options.controlsPosition === undefined
+          ? {}
+          : { controlsPosition: options.controlsPosition })}
+      />
+    );
     return options.strict === true ? <StrictMode>{player}</StrictMode> : player;
   };
   const view = render(element());
@@ -242,9 +266,13 @@ export async function mountPlayer(
 // --- Queries --------------------------------------------------------------------
 
 export const ui = {
+  /** The player itself: a `<section aria-label>`. */
+  region: () => screen.getByRole('region', { name: /^Score player/ }),
   playToggle: () => screen.getByRole('button', { name: /^(Play|Pause)$/ }),
+  /** The slider's thumb (Radix): `aria-valuenow` / `aria-valuetext`, driven by the keyboard. */
   tempo: () => screen.getByRole('slider', { name: 'Tempo' }),
-  loop: () => screen.getByRole<HTMLInputElement>('checkbox', { name: 'Loop' }),
+  /** A `<button role="switch" aria-checked>` labelled by its `<label for>`. */
+  loop: () => screen.getByRole('switch', { name: 'Loop' }),
   status: () => screen.getByRole('status'),
   alert: () => screen.getByRole('alert'),
   notation: () => screen.getByRole('img', { name: /^Music notation/ }),

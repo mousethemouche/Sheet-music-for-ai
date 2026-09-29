@@ -34,6 +34,8 @@ export class FakePlaybackEngine implements PlaybackEngine {
 
   /** Plans of the accepted load() calls, in order. */
   readonly loads: PlaybackPlan[] = [];
+  /** Multipliers passed to setTempoMultiplier() before destroy(), accepted or rejected, in order. */
+  readonly tempoRequests: number[] = [];
   playCalls = 0;
   position = 0;
   destroyed = false;
@@ -180,6 +182,7 @@ export class FakePlaybackEngine implements PlaybackEngine {
     if (!this.guard('setTempoMultiplier')) {
       return;
     }
+    this.tempoRequests.push(multiplier);
     if (
       this.rejectTempo ||
       !Number.isFinite(multiplier) ||
