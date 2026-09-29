@@ -1,8 +1,11 @@
 name: CI
 
+# Required merge checks and what each job proves: docs/testing/CI.md.
 on:
   push:
     branches: [main]
+    # Release tags run every job, MCP-UI included (TEST_PLAN §8: full suite before release).
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -19,31 +22,68 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.diff.outputs.code }}
+      mcp_ui: ${{ steps.diff.outputs.mcp_ui }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      # TEST_PLAN §8: documentation-only changes do not start a database or a browser.
+      # TEST_PLAN §8 / CI-05:
+      # - code: any changed file outside docs/ and Markdown. Documentation-only
+      #   changes start no database and no browser (only the `docs` job runs).
+      # - mcp_ui: a change the MCP-UI suite depends on: the MCP server and View,
+      #   any workspace package (contracts, domain, renderer, playback, score-ui,
+      #   auth, persistence, fixtures), the playback assets, migrations, the
+      #   lockfile and the shared build/test configuration.
+      # A manual run, a release tag or an unknown base runs everything.
       - id: diff
         env:
           EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           base="$PUSH_BEFORE_SHA"
           if [ "$EVENT_NAME" = "pull_request" ]; then base="$PR_BASE_SHA"; fi
-          if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$REF_TYPE" = "tag" ] \
+            || [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
             echo "code=true" >> "$GITHUB_OUTPUT"
-          elif git diff --name-only "$base" HEAD | grep -qvE '^docs/|\.md$'; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "mcp_ui=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          code_files="$(git diff --name-only "$base" HEAD | grep -vE '^docs/|\.md$' || true)"
+          if [ -n "$code_files" ]; then code=true; else code=false; fi
+          if grep -qE '^(apps/mcp/|packages/|assets/|supabase/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|vitest\.config\.ts$|tsconfig(\.base)?\.json$|\.nvmrc$|\.github/workflows/ci\.yml$)' <<< "$code_files"; then
+            mcp_ui=true
+          else
+            mcp_ui=false
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "mcp_ui=$mcp_ui" >> "$GITHUB_OUTPUT"
 
-  # CI-01 + CI-02: frozen install, typecheck, lint, independent app builds,
-  # unit/component tests (no DB, no browser) and the architecture rules.
+  # Documentation-only changes: formatting only, no build, database or browser.
+  docs:
+    name: Documentation format
+    needs: changes
+    if: needs.changes.outputs.code == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prettier --check .
+
+  # CI-01 + CI-02 + CI-04 (manifest half): frozen install, typecheck, lint,
+  # independent app builds, unit/component tests (no DB, no browser; includes
+  # tools/inventory) and the architecture rules.
   quality:
     name: Typecheck, lint, build, unit/component tests, architecture
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -55,13 +95,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      # The cross-app suites are not a workspace package; `pnpm typecheck` does not reach them.
+      - run: pnpm exec tsc -p tests/acceptance/tsconfig.json
       - run: pnpm lint
       - run: pnpm build
       - run: pnpm test
       - run: pnpm check:arch
 
-  # CI-03: real API/MCP/DB integration against one isolated Postgres per job,
-  # files run serially in one worker (see vitest.config.ts).
+  # CI-03 + CI-04 (exposed-surface half): every integration suite (apps,
+  # packages, tests/acceptance: FLOW-01, ACCESS-01, CI-04) against one
+  # throwaway Postgres; files run serially in one worker (vitest.config.ts).
   integration:
     name: Integration (Postgres)
     needs: changes
@@ -83,7 +126,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      # Throwaway service-container credentials; never production data.
+      # Throwaway service-container credentials; never production data or secrets.
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/sheet_music_test
     steps:
       - uses: actions/checkout@v7
@@ -93,16 +136,23 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:integration
+      # = pnpm test:integration, plus a JUnit report for the failure artifact.
+      - run: pnpm exec vitest run --project integration --reporter=default --reporter=junit --outputFile.junit=test-results/integration.junit.xml
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-report
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
-  # MCP-UI integration sub-suite (#11 MCP-UI-01..03), one Chromium worker.
-  # Gated placeholder until #11 lands its scenarios: run manually, or set the
-  # repository variable MCP_UI_ENABLED=true. CI-05 (#17) then decides the
-  # path-based trigger for MCP/View/bridge/asset/contract changes.
+  # CI-05: the MCP-UI sub-suite (#11 MCP-UI-01..03 and the adapter runtime
+  # checks) in one Chromium worker, on the production-built bundles, for
+  # changes it depends on, manual runs and release tags.
   mcp-ui:
     name: MCP-UI integration (Chromium)
     needs: changes
-    if: needs.changes.outputs.code == 'true' && (github.event_name == 'workflow_dispatch' || vars.MCP_UI_ENABLED == 'true')
+    if: needs.changes.outputs.mcp_ui == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -132,4 +182,16 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       # The suite exercises the production-built View bundle.
       - run: pnpm build
-      - run: pnpm test:mcp-ui
+      # = pnpm test:mcp-ui, plus a JUnit report for the failure artifact.
+      - run: pnpm exec vitest run --project mcp-ui --reporter=default --reporter=junit --outputFile.junit=test-results/mcp-ui.junit.xml
+      # Test reports and Vitest's failure screenshots of test fixtures: no secret, no user data.
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mcp-ui-report
+          path: |
+            test-results/
+            **/__screenshots__/
+            !**/node_modules/**
+          if-no-files-found: ignore
+          retention-days: 7

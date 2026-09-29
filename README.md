@@ -67,6 +67,20 @@ One app at a time: `pnpm --filter @sheet-music/<web|api|mcp> build`, then
 `pnpm --filter @sheet-music/mcp start` (port 3001, `/mcp`). `PORT` overrides
 the default. Web dev server: `pnpm --filter @sheet-music/web dev`.
 
+`pnpm test:integration` includes the cross-app suites of `tests/acceptance`
+(FLOW-01, ACCESS-01 and the public-surface check, database
+`sheet_music_test_flow`); `pnpm test` includes the manifest check of
+`tools/inventory`. Scoped runs and the suites' own typecheck:
+
+```sh
+pnpm exec vitest run --project integration tests/acceptance
+pnpm exec tsc -p tests/acceptance/tsconfig.json
+```
+
+A new MCP tool, resource or HTTP route must be listed with its tests in
+`tools/inventory/public-surface.json` ([ACCEPTANCE](docs/testing/ACCEPTANCE.md)).
+CI jobs and the required merge checks: [CI](docs/testing/CI.md).
+
 ## Tests
 
 Unit, component and integration (with its MCP-UI sub-suite) from the

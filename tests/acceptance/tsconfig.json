@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    // These suites compile the apps' sources through their test harnesses, so
+    // they need what each app's own tsconfig enables: legacy decorators with
+    // metadata (apps/api, NestJS) and exactOptionalPropertyTypes off
+    // (apps/mcp, pinned MCP SDK types).
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "exactOptionalPropertyTypes": false
+  },
+  "include": ["**/*.ts"]
+}
