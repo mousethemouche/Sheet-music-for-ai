@@ -3,8 +3,16 @@
   "framework": null,
   "buildCommand": "pnpm run build",
   "outputDirectory": "public",
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ],
   "functions": {
-    "api/index.js": { "maxDuration": 30 }
-  }
+    "api/index.js": {
+      "maxDuration": 30
+    }
+  },
+  "regions": ["cdg1"]
 }
