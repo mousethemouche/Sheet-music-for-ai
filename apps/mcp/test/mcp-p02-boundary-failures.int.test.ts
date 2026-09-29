@@ -1,17 +1,23 @@
 /**
- * MCP-P02 (#11): boundary failures of the MCP HTTP surface. Malformed bodies,
- * unsupported HTTP methods, unknown methods, tools and resources, and a
- * closed tool input fail cleanly, write nothing and do not crash the server:
- * a valid tool call afterwards succeeds. Tool behavior is #12-#14; request
- * limits and Origin checks are #24; auth is #26.
+ * MCP-P02 (#11): boundary failures of the MCP HTTP surface, on the
+ * production composition with a valid token from the local test issuer.
+ * Malformed bodies, unsupported HTTP methods, unknown methods, tools and
+ * resources, and a closed tool input fail cleanly, write nothing and do not
+ * crash the server: a valid tool call afterwards succeeds. Tool behavior is
+ * #12-#14; request limits and Origin checks are #24; auth (401 on every
+ * method without a token) is #26, OAUTH-02.
  */
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { type CallToolResult, ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
+import { TEST_USER_A } from '@sheet-music/persistence-postgres/testing';
 import { RICH_WIRE_FIXTURE, cloneFixture } from '@sheet-music/test-fixtures';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { type RunningMcpServer, connectClient, startMcpServer } from './support/mcp-harness';
+import { type McpTestBackend, openMcpTestBackend, rowCounts } from './support/backend';
+import { type RunningMcpApp, startMcpApp } from './support/mcp-harness';
 
-let server: RunningMcpServer;
+let backend: McpTestBackend;
+let app: RunningMcpApp;
+let token: string;
 let client: Client;
 
 /** A create_score payload: the rich fixture without its server-assigned id and revision. */
@@ -42,15 +48,18 @@ async function rpcErrorCode(request: Promise<unknown>): Promise<number> {
 }
 
 beforeAll(async () => {
-  server = await startMcpServer({ viewHtml: '<!doctype html><title>View</title>' });
-  client = await connectClient(server.url);
+  backend = await openMcpTestBackend();
+  app = await startMcpApp({ stores: backend.persistence });
+  token = await app.token(TEST_USER_A.id);
+  client = await app.connect(token);
   // Lets the client check every structuredContent against the published outputSchema.
   await client.listTools();
 });
 
 afterAll(async () => {
   await client?.close();
-  await server?.close();
+  await app?.close();
+  await backend?.close();
 });
 
 describe('MCP-P02 malformed HTTP bodies', () => {
@@ -58,9 +67,10 @@ describe('MCP-P02 malformed HTTP bodies', () => {
     { case: 'malformed JSON', body: '{"jsonrpc": "2.0", "method": ' },
     { case: 'JSON that is not a JSON-RPC message', body: '{"hello": "world"}' },
   ])('answers $case with a 400 JSON-RPC parse error', async ({ body }) => {
-    const response = await fetch(server.url, {
+    const response = await fetch(app.url, {
       method: 'POST',
       headers: {
+        authorization: `Bearer ${token}`,
         'content-type': 'application/json',
         accept: 'application/json, text/event-stream',
       },
@@ -77,11 +87,14 @@ describe('MCP-P02 malformed HTTP bodies', () => {
 
 describe('MCP-P02 HTTP methods other than POST', () => {
   it.each(['GET', 'DELETE', 'OPTIONS', 'PUT'])(
-    'answers %s with 405 and Allow: POST',
+    'answers %s with a valid token with 405 and Allow: POST',
     async (method) => {
-      const response = await fetch(server.url, {
+      const response = await fetch(app.url, {
         method,
-        headers: { accept: 'application/json, text/event-stream' },
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: 'application/json, text/event-stream',
+        },
       });
       expect(response.status).toBe(405);
       expect(response.headers.get('allow')).toBe('POST');
@@ -140,9 +153,8 @@ describe('MCP-P02 closed tool input', () => {
 });
 
 describe('MCP-P02 no side effect, no crash', () => {
-  it('stored nothing for any failed request', () => {
-    expect(server.stores.draftCount).toBe(0);
-    expect(server.stores.savedCount).toBe(0);
+  it('stored nothing for any failed request', async () => {
+    expect(await rowCounts(backend)).toEqual({ drafts: 0, saved: 0 });
   });
 
   it('still serves a valid tool call afterwards', async () => {
@@ -157,7 +169,6 @@ describe('MCP-P02 no side effect, no crash', () => {
     expect(firstText(result)).toContain(
       `Created score ${String(artifact['scoreId'])} at revision 1`,
     );
-    expect(server.stores.draftCount).toBe(1);
-    expect(server.stores.savedCount).toBe(0);
+    expect(await rowCounts(backend, TEST_USER_A.id)).toEqual({ drafts: 1, saved: 0 });
   });
 });

@@ -8,17 +8,21 @@ error codes) remain the references. Pinned versions:
 `@modelcontextprotocol/sdk` 1.30.1 and `@modelcontextprotocol/ext-apps` 1.7.5
 (MCP Apps spec 2026-01-26).
 
-| Module (`apps/mcp/src`) | Role                                                                 |
-| ----------------------- | -------------------------------------------------------------------- |
-| `app.ts`                | Express app: `POST /mcp`, 405 for other methods, middleware slots    |
-| `protection.ts`         | `mcpRequestProtection`: correlation, Origin/CORS, body cap (#19/#24) |
-| `server.ts`             | `createMcpServer(deps)`: one `McpServer` with the tools and the View |
-| `tools.ts`              | tool registration, visibility, result and error serialization        |
-| `tool-descriptions.ts`  | model-facing descriptions (ScoreSpec, operations, limits, consent)   |
-| `view-resource.ts`      | `ui://sheet-music/score-view`, CSP metadata, asset origin check      |
-| `use-cases.ts`          | the five use cases over the store ports, system clock, score IDs     |
-| `principal.ts`          | `authInfo` -> `AuthenticatedPrincipal`                               |
-| `main.ts`               | process composition root (see §7)                                    |
+| Module (`apps/mcp/src`) | Role                                                                             |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| `app.ts`                | Express app: `POST /mcp`, 405 for other methods, protection slot, public routes  |
+| `protection.ts`         | correlation, Origin/CORS, body cap, per-IP and per-owner rate limits (#19/#24)   |
+| `auth.ts`               | MCP verifier per audience mode, RFC 9728 metadata route, bearer guard (#26)      |
+| `composition.ts`        | `createMcpApp(deps)`: the production composition used by `main.ts` and the tests |
+| `config.ts`             | `loadMcpConfig(env)`: environment validation (§7)                                |
+| `server.ts`             | `createMcpServer(deps)`: one `McpServer` with the tools and the View             |
+| `tools.ts`              | tool registration, visibility, result and error serialization                    |
+| `tool-descriptions.ts`  | model-facing descriptions (ScoreSpec, operations, limits, consent)               |
+| `view-resource.ts`      | `ui://sheet-music/score-view`, CSP metadata, asset origin                        |
+| `static-assets.ts`      | `createViewAssetsRouter`: the View's public playback assets at `/assets/`        |
+| `use-cases.ts`          | the five use cases over the store ports, system clock, score IDs                 |
+| `principal.ts`          | `authInfo` -> `AuthenticatedPrincipal`                                           |
+| `main.ts`               | process entry: configuration, Postgres pool, listen, graceful shutdown (§7)      |
 
 ## 1. HTTP surface
 
@@ -28,36 +32,74 @@ error codes) remain the references. Pinned versions:
 - **JSON responses** (`enableJsonResponse`): each POST is answered with one
   JSON body, no SSE stream. The server sends no progress or log notifications,
   so nothing is lost, and plain responses suit serverless hosting (#16).
-- **Body.** The transport reads the raw body itself, capped at
+- **Body: one JSON-RPC message per POST.** After the protection slot,
+  `readJsonRpcMessage` (app.ts) reads the body once, capped at
   `maxRequestBodyBytes` (default `PAYLOAD_LIMITS.requestBodyBytes`, 512 KiB;
-  over the cap: 413 before parsing). Malformed JSON and JSON that is not a
-  JSON-RPC message are a 400 JSON-RPC parse error (`-32700`, `id: null`); the
-  process never crashes on a body. A wrong `Accept` or `Content-Type` is the
-  SDK's 406/415.
+  a declared body over the cap is already 413 in the slot), and hands it to
+  the transport as `parsedBody`; the transport never reads the stream
+  itself. A `Content-Type` other than JSON is 415 (the SDK's rule and
+  message); malformed JSON is a 400 JSON-RPC parse error (`-32700`,
+  `id: null`); a **JSON-RPC batch** (a JSON array) is 400 Invalid Request
+  (`-32600`, "JSON-RPC batches are not supported."). MCP removed batching in
+  protocol 2025-06-18, and the pinned SDK transport would still run up to 100
+  batched messages of one request, each a tool call that the per-owner rate
+  limit counted once. JSON that is not a JSON-RPC message is the SDK's 400
+  `-32700`, a wrong `Accept` its 406. The process never crashes on a body.
 - **Other methods.** `GET` (standalone SSE stream) and `DELETE` (session end)
   have no meaning without sessions. Every method but POST, `OPTIONS` included,
   is `405` with `Allow: POST` and a JSON-RPC error body, once request
-  protection has let it through (below).
+  protection and authentication have let it through (below): without a valid
+  token it is the 401 challenge, so no method is a way around the guard.
 - **Protection slot, every method.** `createMcpHttpApp({ protection })` runs
   the given handlers, in order, for every method on `/mcp` before the POST
-  route and the 405 fallback. Production passes `mcpRequestProtection()`
-  (`protection.ts`, ERRORS_AND_SECURITY.md §3): the correlation ID, the Origin
-  policy (a request carrying an `Origin` outside `MCP_ALLOWED_ORIGINS`,
-  `null` included, is 403 on every method, as the Streamable HTTP transport
-  requires against DNS rebinding; a CORS preflight from an allowed origin is
-  204; MCP host backends send no `Origin`) and the body cap (declared body
-  over 512 KiB: 413; chunked: 411), all before an MCP server is built. The
-  per-IP rate limit joins this slot when the Postgres store is wired.
-- **POST slot.** `createMcpHttpApp({ middleware })` runs the given handlers,
-  in order, before `POST /mcp` only, after the protection slot:
-  authentication (#26) and the per-owner rate limit. The auth middleware
-  verifies the bearer token and sets `req.auth` (SDK `AuthInfo`) with the
-  verified subject in `auth.extra.userId`. The transport hands it to every
-  handler as `extra.authInfo`, and `principalFromAuthInfo` turns it into the
-  `AuthenticatedPrincipal`. Without it the use cases get no principal
-  (reported as `INTERNAL`, §5).
-- An unexpected exception in the HTTP layer is a 500 JSON-RPC internal error
-  (`-32603`) without details.
+  route and the 405 fallback. The production chain (`createMcpApp`,
+  ERRORS_AND_SECURITY.md §3) is:
+  1. correlation ID;
+  2. Origin policy: a request carrying an `Origin` outside
+     `MCP_ALLOWED_ORIGINS`, `null` included, is 403 on every method, as the
+     Streamable HTTP transport requires against DNS rebinding; a CORS
+     preflight from an allowed origin is 204 (a preflight never carries
+     credentials); MCP host backends send no `Origin`;
+  3. body cap: declared body over 512 KiB is 413, chunked is 411;
+  4. per-IP rate limit (`mcp-ip`, shared Postgres store): 429 over the limit,
+     so a flood is stopped before any token verification;
+  5. bearer guard (`auth.ts`, AUTH_MCP_OAUTH.md §6): the token is read from
+     the `Authorization` header only (never the query string) and checked by
+     the production verifier. Missing or refused: 401 with
+     `WWW-Authenticate: Bearer resource_metadata="<metadata URL>"` (plus the
+     generic `error="invalid_token"` for any token problem) and an
+     `UNAUTHENTICATED` envelope; the reason is logged (`auth.rejected`),
+     never sent. JWKS unreachable: 503 `DEPENDENCY_UNAVAILABLE`, no challenge.
+     Accepted: `req.auth` (SDK `AuthInfo`) carries the verified subject in
+     `extra.userId` and nothing else (token and client are not passed on);
+     the transport hands it to every handler as `extra.authInfo`, and
+     `principalFromAuthInfo` turns it into the `AuthenticatedPrincipal`.
+     Tool arguments never carry identity;
+  6. per-owner rate limit (`mcp-owner`, keyed by the verified user ID).
+
+  Everything answered here (403, 204, 411/413, 429, 401, 503) is answered
+  before the MCP transport runs, and writes nothing.
+
+- **Private answers.** Every answer after the protection slot (tool results,
+  protocol errors, the 405) carries `Cache-Control: private, no-store`,
+  `Vary: Authorization` and `X-Content-Type-Options: nosniff`, like the API's
+  protected routes: `get_score` and `search_scores` return library data of
+  one user. Error envelopes carry `no-store` and `nosniff` (`sendError`).
+
+- **Public routes.** `GET /.well-known/oauth-protected-resource/mcp` (the
+  path of `protectedResourceMetadataUrl(MCP_PUBLIC_URL)`) serves the RFC 9728
+  document: `resource` = `MCP_PUBLIC_URL`, `authorization_servers` = the
+  Supabase issuer, `bearer_methods_supported: ["header"]`, `resource_name`;
+  no authentication, `Access-Control-Allow-Origin: *`, cached 5 minutes. No
+  `scopes_supported` yet (AUTH_MCP_OAUTH.md §5). `/assets/*` serves the
+  View's playback assets (`static-assets.ts`). Neither goes through the `/mcp`
+  chain.
+- An unexpected exception in the HTTP layer (a bug, or an error a guard did
+  not expect, such as a verifier error the token classification rethrows)
+  is the shared 500 `INTERNAL` envelope with the request's correlation ID,
+  `no-store` and `nosniff` (`sendError(internalError(...))`), logged as
+  `http.unhandled_error`; the thrown value is never sent. Every POST that
+  reaches the transport is logged at debug level (`mcp.request`).
 - No other route: there is no separate health endpoint. An MCP `ping`, which
   touches no store, checks that the server answers; the API's `/health` (#21)
   covers the shared dependencies.
@@ -69,17 +111,50 @@ createMcpServer({
   useCases,          // McpUseCases: createScore, editScore, saveScore, getScore, searchScores
   resolvePrincipal,  // (authInfo?: AuthInfo) => AuthenticatedPrincipal | null
   logger,            // server-common Logger: use-case failures and bugs (#19)
-  config,            // { viewHtml: string; assetOrigin?: string }
+  view,              // ScoreViewResource { document, ui }: prepareScoreView({ viewHtml, assetOrigin? })
 }): McpServer;
 
-createMcpHttpApp({ createServer, protection?, middleware?, maxRequestBodyBytes? }): Express;
+createMcpHttpApp({ createServer, protection?, metadata?, assets?, trustProxyHops?,
+                   maxRequestBodyBytes?, logger? }): Express;
 mcpRequestProtection({ allowedOrigins?, maxRequestBodyBytes? }): RequestHandler[];
 createMcpUseCases(stores, { clock?, ids?, expiry? }): McpUseCases;
+
+// The production composition (composition.ts): main.ts and every integration suite.
+createMcpApp({
+  config,      // McpAppConfig: publicUrl, supabaseUrl, allowedOrigins, audienceMode, trustProxyHops
+  stores,      // McpStores: drafts, saved, promotion, rateLimits (PostgresPersistence fits)
+  viewHtml,    // the built single-file View
+  logger,
+  assets?,     // createViewAssetsRouter(dir)
+  clock?,      // use-case and rate-limit time (never token time); default system
+  ids?,        // default scr_ + random UUID
+  rateLimits?, // default DEFAULT_MCP_RATE_LIMITS
+}): { app, resource, metadataUrl };
 ```
 
 `createMcpUseCases` wires the real use cases over any `ScoreStores`
 (`drafts`, `saved`, `promotion`); production score IDs are `scr_` + a random
-UUID and the draft TTL is the application default.
+UUID and the draft TTL is the application default. `createMcpApp` builds the
+verifier from `supabaseUrl` (`supabaseAuthEndpoints` -> exact issuer and
+`createRemoteJwks(jwksUrl)`), prepares the View resource once with
+`new URL(publicUrl).origin` as its asset origin (`prepareScoreView`: a build
+without the asset-origin placeholder throws here, at startup, not at every
+`resources/read`), and assembles the chain of §1.
+
+**Audience modes** (AUTH_MCP_OAUTH.md §4). `resource` (default): the verifier
+accepts `aud` containing the canonical `MCP_PUBLIC_URL` and requires
+`client_id`; a web session token, a token without the Custom Access Token
+Hook and a token for another resource are 401. `interim-authenticated`:
+`aud: "authenticated"`, still `client_id` required; only by the explicit
+`MCP_AUTH_AUDIENCE_MODE` value, after the owner sign-off, and logged as a
+warning (`auth.interim_audience_mode`) at every start. Any other value stops
+the process at start; there is no fallback.
+
+**Rate limits** (`DEFAULT_MCP_RATE_LIMITS`, per minute, fixed windows in the
+shared Postgres store): `mcp-ip` 600 requests per client address, `mcp-owner`
+120 requests per user. Host backends call from few shared addresses for many
+users, so the per-IP rule is a flood bound in front of verification and the
+per-owner rule is the one that bounds a user. Tune against real use.
 
 ## 3. Tool manifest
 
@@ -167,75 +242,93 @@ case parses them with the contract. A call whose `arguments` is not an object
 `vite-plugin-singlefile`), identical for every caller. Its `_meta.ui` (on the
 listing and on the read content) is:
 
-- `csp.connectDomains` and `csp.resourceDomains`: the configured asset origin
-  only (SoundFont fetch needs `connect-src`, fonts need `font-src`); empty when
-  none is configured, which is the spec's no-network default;
+- `csp.connectDomains` and `csp.resourceDomains`: the asset origin only
+  (the SoundFont fetch needs `connect-src`, the worklet module `script-src`);
+  empty when none is configured, which is the spec's no-network default;
 - `prefersBorder: true`.
 
-The asset origin comes from `MCP_ASSET_BASE_URL` and must be https (http only
-on a loopback host). The built View is about 700 kB (190 kB gzip) before the
-renderer and synth are added.
+The asset origin is the origin of `MCP_PUBLIC_URL`: the server serves the
+View's playback assets itself at `/assets/` (`static-assets.ts`). It must be
+https (http only on a loopback host). The document and its metadata are
+prepared once at startup (§2). The View itself (build, size, asset origin
+injection, what the host CSP must allow, behavior, test hooks) is
+[MCP_VIEW.md](MCP_VIEW.md); the current single-file build is 1,692.20 kB
+(683.42 kB gzip), MCP_VIEW.md §1.
 
-**Shell** (`apps/mcp/view/src`):
+**View** (`apps/mcp/view/src`): the ext-apps `App` bridge, the MCP-U01
+result parser, the last-valid-artifact state and the mounted ScorePlayer of
+`packages/score-ui` with the VexFlow renderer and the SpessaSynth engine.
+Its behavior (P-01 on a newer revision, notices, theme, width, teardown) is
+described in [MCP_VIEW.md](MCP_VIEW.md) §5.
 
-- `host-bridge.ts` uses the official ext-apps `App` (postMessage to the
-  parent, `autoResize` on). Listeners for `toolresult`, `toolcancelled` and
-  `hostcontextchanged` are registered before the handshake so no result is
-  missed. The host context applied is the theme (`data-theme`, color-scheme),
-  host style variables, host fonts, `displayMode` (data attribute) and
-  `containerDimensions` (fixed or maximum width/height of the root). A host
-  teardown unmounts the score first, so the player can stop its audio.
-- `tool-result.ts` (MCP-U01) accepts a result only when
-  `structuredContent.artifact` passes the music-contracts artifact schema, its
-  `score` passes `validateScoreSpec` (so version 1 only), and `scoreId` /
-  `revision` equal the document's `id` / `revision`. An `isError` result is
-  read as the error envelope of §5.
-- `view-state.ts` keeps the last valid artifact. The first valid artifact binds
-  the View to its score ID; a higher revision of that ID replaces it; the same
-  or a lower revision, or another score ID, is ignored. A rejected call, an
-  unreadable result or a cancellation keeps the score and shows a recoverable
-  notice (`role="alert"`).
-- `ScoreView.tsx` mounts `ScoreMount` only with an accepted artifact, keyed by
-  score ID, so newer revisions reach the same instance. **Mount point:** the
-  `ScoreMount` prop (`ScoreMountProps = { artifact }`, `score-mount.ts`). It
-  defaults to a text summary; the next phase passes the shared ScorePlayer of
-  `packages/score-ui` (#7), which applies P-01 on a new revision (stop the old
-  audio, load at tick 0, stay paused). The View does not import score-ui yet.
+## 7. Process composition (`main.ts`, `config.ts`)
 
-## 7. Process composition (`main.ts`)
+Environment (template: `apps/mcp/.env.example`), read and validated once by
+`loadMcpConfig` before anything starts:
 
-Environment: `PORT` (default 3001), `MCP_VIEW_HTML_PATH` (default: the View
-built next to the bundle, `dist/view/index.html`), `MCP_ASSET_BASE_URL`
-(optional), `MCP_ALLOWED_ORIGINS` (optional comma-separated browser origins
-allowed to call `/mcp`; default none). The HTML is read once at startup; a
-missing build fails fast. Logs are JSON lines on stdout (server-common).
+| Variable                 | Required | Meaning                                                                                                   |
+| ------------------------ | -------- | --------------------------------------------------------------------------------------------------------- |
+| `MCP_PUBLIC_URL`         | yes      | canonical public URL of the endpoint = the protected resource; https (http on loopback), path `/mcp`      |
+| `SUPABASE_URL`           | yes      | Supabase project origin; issuer `<url>/auth/v1` and JWKS derived with `supabaseAuthEndpoints`             |
+| `DATABASE_URL`           | yes      | `postgres(ql)://` URL of the server login role (member of `score_owner`); secret                          |
+| `MCP_ALLOWED_ORIGINS`    | no       | comma-separated exact browser origins allowed on `/mcp`; default none                                     |
+| `MCP_AUTH_AUDIENCE_MODE` | no       | `resource` (default) or `interim-authenticated` (§2)                                                      |
+| `MCP_TRUST_PROXY_HOPS`   | no       | proxy hops for Express `trust proxy` (0-10, default 0), so the per-IP limit sees the client address       |
+| `PORT`                   | no       | default 3001                                                                                              |
+| `MCP_VIEW_HTML_PATH`     | no       | the built View (default `dist/view/index.html` next to the bundle); its `assets/` directory is `/assets/` |
 
-Phase note: the Postgres stores (#9/#22), the auth middleware (#26) and the
-rate limits (#24) are wired in the next phase. Until then no request carries a
-principal: every tool call fails before any store access (the use case
-answers `UNAUTHENTICATED`, logged, and served as `INTERNAL` because that code
-belongs to the HTTP layer), and the placeholder stores only reject.
-Discovery, the View resource and request protection already behave as in
-production. `pnpm --filter @sheet-music/mcp dev` builds the View, then runs
-the sources with `tsx`.
+- **Fails safely.** Every missing or invalid variable is collected and the
+  process exits with code 1 after one `config.invalid` log line listing the
+  problems by variable name; no value (password, URL) is logged. A missing
+  View build (HTML or `assets/`), or a View document without the
+  asset-origin placeholder (a foreign or stale build), is
+  `server.start_failed`, also exit 1.
+- **Pool.** One `pg` pool per process (`createPostgresPersistence`) for the
+  score stores and the rate-limit store; idle-connection errors are logged
+  (`db.idle_connection_error`), never fatal.
+- **Graceful shutdown.** On SIGTERM or SIGINT: stop accepting connections,
+  close idle keep-alive connections, let in-flight requests finish (their
+  connections are closed after 10 s at most), then close the pool; exit code
+  0 (`server.stopping`, `server.stopped`).
+- Logs are JSON lines on stdout (server-common), with the correlation ID of
+  the request; tokens and connection strings are redacted.
+
+`pnpm --filter @sheet-music/mcp build` then `node dist/server/main.js` with
+the variables above runs the production server. `pnpm --filter
+@sheet-music/mcp dev` builds the View and runs the sources with `tsx`; it
+needs the same variables.
 
 ## 8. Tests
 
-| Test    | File                                                                        | Covers                                                                                                                                                                                 |
-| ------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MCP-P01 | `apps/mcp/test/mcp-p01-setup-discovery.int.test.ts`                         | initialize at the latest protocol version, ping, the reviewed manifest (§3), resources/list and read of the built View                                                                 |
-| MCP-P02 | `apps/mcp/test/mcp-p02-boundary-failures.int.test.ts`                       | parse errors, 405 methods, unknown method/resource/tool, closed input as `INVALID_INPUT`, no write, next call succeeds                                                                 |
-| SEC-02  | `apps/mcp/test/sec-02-request-protection.int.test.ts`                       | #24 on this app: forbidden/`null` Origin 403 on POST, GET, DELETE, OPTIONS; allowed preflight 204; allowed and no-Origin POST served; 413/411 before any MCP work; no write            |
-| ERR-I01 | `apps/mcp/test/err-i01-dependency-failure.int.test.ts`                      | #19 on this app: the Postgres adapter on a missing database; `DEPENDENCY_UNAVAILABLE` tool error with the header's correlation ID, one correlated error log line, no password anywhere |
-| MCP-U01 | `apps/mcp/view/test/mcp-u01-view-payload.test.ts`, `...score-view.test.tsx` | parser acceptance/rejection, stale/duplicate/other-score results, notices, mount only after validation                                                                                 |
+| Test                                   | File                                                                        | Covers                                                                                                                                                                                                                                                |
+| -------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MCP-P01                                | `apps/mcp/test/mcp-p01-setup-discovery.int.test.ts`                         | initialize at the latest protocol version, ping, the reviewed manifest (§3), resources/list and read of the built View with this server's origin in its CSP                                                                                           |
+| MCP-P02                                | `apps/mcp/test/mcp-p02-boundary-failures.int.test.ts`                       | parse errors, 405 methods (with a valid token), unknown method/resource/tool, closed input as `INVALID_INPUT`, no write, next call succeeds                                                                                                           |
+| MCP HTTP last resort (ERR-01 wiring)   | `apps/mcp/src/app.test.ts`                                                  | a throwing or rejecting handler of the `/mcp` chain: correlated 500 `INTERNAL` envelope, `no-store`, `nosniff`, one correlated log line, thrown text never sent                                                                                       |
+| View resource (unit)                   | `apps/mcp/src/view-resource.test.ts`                                        | origin injection, CSP metadata prepared once, a build without the placeholder fails `createMcpApp` at startup                                                                                                                                         |
+| MCP-CREATE-01/02                       | `apps/mcp/test/mcp-create-score.int.test.ts`                                | #12: rich create returns the declared draft artifact, re-read, one draft of the token subject and no saved row; malformed envelope, 33 bars and P-03 conflict are actionable tool errors with no row                                                  |
+| MCP-EDIT-01/02/03                      | `apps/mcp/test/mcp-edit-score.int.test.ts`                                  | #13: mixed batch (meter, bar replacement, fingering) keeps ID, revision +1, TTL renewed, persisted; stale replay is `REVISION_CONFLICT` with no second transposition; failed batches change nothing; repair batch passes                              |
+| MCP-LIB-01, SAVE-02, GET-02, SEARCH-02 | `apps/mcp/test/mcp-library.int.test.ts`                                     | #14: save/reopen/search successes; invalid metadata, consent flag, stale and expired saves promote nothing; replay rule; missing/expired/unreadable/malformed reads; reads renew no TTL; query+tags+pages, empty, bad pagination                      |
+| OAUTH-02 (MCP wire)                    | `apps/mcp/test/oauth-02-mcp-auth.int.test.ts`                               | #26: 401 + `resource_metadata` challenge, public metadata (resource, issuer), valid token reaches tools, expired / other-resource / session / query-string tokens refused, every method guarded, JWKS outage 503, audience modes                      |
+| SEC-02                                 | `apps/mcp/test/sec-02-request-protection.int.test.ts`                       | #24 on this app: forbidden/`null` Origin 403 on POST, GET, DELETE, OPTIONS before auth; allowed preflight 204; allowed and no-Origin POST served with private-answer headers; 413/411 before any MCP work; no write                                   |
+| SEC-03 (wire)                          | `apps/mcp/test/sec-03-rate-limit.int.test.ts`                               | #24: per-owner 429 with `Retry-After`, no tool run and no write; independent owner quota; reset at the next window; a batch of more calls than the limit is 400 `-32600`, one counted request, no write; per-IP limit counts unauthenticated requests |
+| ERR-I01                                | `apps/mcp/test/err-i01-dependency-failure.int.test.ts`                      | #19 on this app: the score stores on a missing database; `DEPENDENCY_UNAVAILABLE` tool error with the header's correlation ID, one correlated error log line, no password anywhere                                                                    |
+| MCP-CONFIG-01 (unit)                   | `apps/mcp/test/mcp-config-01.test.ts`                                       | configuration: canonical resource and defaults; missing/invalid variables reported by name without values; no audience fallback                                                                                                                       |
+| MCP-U01                                | `apps/mcp/view/test/mcp-u01-view-payload.test.ts`, `...score-view.test.tsx` | parser acceptance/rejection, stale/duplicate/other-score results, notices, mount only after validation                                                                                                                                                |
 
-The integration files run the real Express app with the production request
-protection, SDK server and client over loopback HTTP, and the real use cases
-over in-memory stores (`apps/mcp/test/support`; ERR-I01 uses the Postgres
-adapter); P01 builds the View with `vite.view.config.ts` into
-a temporary directory, so it serves the current sources' production bundle
-without a prior build. Not covered here, by design: tool behavior on Postgres
-(#12-#14, FLOW-01/ACCESS-01 #18), auth (#26), rate limits (SEC-03 wire, with
-the Postgres store), the error mapping table (#19, ERR-01), and the browser
-suite MCP-UI-01..03 (real AppBridge,
-sandboxed iframe, player), which comes with the ScorePlayer.
+Every integration file boots the production composition (`createMcpApp`)
+through `apps/mcp/test/support/mcp-harness.ts` (`startMcpApp`): real request
+protection, rate limits on the shared store, bearer guard, SDK server and
+client over loopback HTTP, use cases and the Postgres adapters on the test
+database `sheet_music_test_mcp` (`support/backend.ts`: `openMcpTestBackend`,
+row inspection through the admin pool). Tokens come from a local ES256 test
+issuer served over loopback (`@sheet-music/auth-jwt/testing`), checked by the
+production verifier through the production remote JWKS key source;
+`MCP_PUBLIC_URL` is the real listening URL. Suites may pass a `TestClock`
+(use-case and rate-limit time) and `SequentialScoreIds`. P01 builds the View
+with `vite.view.config.ts` into a temporary directory, so it serves the
+current sources' production bundle without a prior build. FLOW-01/ACCESS-01
+(#18) reuse `startMcpApp`, `openMcpTestBackend` and `support/tool-calls.ts`.
+Not covered here, by design: the lifecycle and cross-owner tables (FLOW-01,
+ACCESS-01 #18), the verifier token matrix (OAUTH-01), the error mapping table
+(ERR-01), and the browser suite MCP-UI-01..03 (MCP_UI_TEST_PROCESS.md).

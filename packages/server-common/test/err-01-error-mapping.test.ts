@@ -5,7 +5,7 @@
  * or invalid auth 401; forbidden origin 403; missing/foreign item 404;
  * mutation conflict 409; size 413; rate 429; unavailable dependency 503")
  * and APPLICATION_LAYER.md §6. One real failure per transport on the wire is
- * ERR-I01, in the wiring phase.
+ * ERR-I01 (apps/mcp/test and apps/api/test err-i01-dependency-failure).
  */
 import { applicationError, fromDomainError } from '@sheet-music/music-application';
 import { errorEnvelopeSchema } from '@sheet-music/music-contracts';

@@ -2,8 +2,9 @@
  * SEC-03, unit part (issue #24): fixed-window decisions at the exact window
  * boundaries with a fake clock, independent owner and IP quotas, and the
  * middleware's refusal to run the handler when over the limit or when the
- * store is down. The shared Postgres store behind a real app is the SEC-03
- * integration test of the wiring phase.
+ * store is down. The shared Postgres store behind a real app is SEC-03
+ * wire (apps/mcp/test/sec-03-rate-limit.int.test.ts and
+ * apps/api/test/sec-02-sec-03-api-protection.int.test.ts).
  */
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { Socket } from 'node:net';

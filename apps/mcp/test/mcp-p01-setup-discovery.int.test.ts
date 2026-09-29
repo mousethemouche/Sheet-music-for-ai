@@ -1,22 +1,26 @@
 /**
  * MCP-P01 (#11): setup and discovery over real loopback HTTP with the pinned
- * SDK client. Checks the handshake, ping, the reviewed five-tool manifest
- * (names, schemas, descriptions, annotations, visibility, UI links) and that
- * resources/read serves the production-built View, the same for everyone.
- * Tool behavior is #12-#14; auth is #26.
+ * SDK client, against the production composition (bearer guard with a token
+ * from the local test issuer, rate limits on the test database). Checks the
+ * handshake, ping, the reviewed five-tool manifest (names, schemas,
+ * descriptions, annotations, visibility, UI links) and that resources/read
+ * serves the production-built View, the same for everyone, with a CSP that
+ * allows this server's own origin (where the View's assets are served).
+ * Tool behavior is #12-#14; auth is #26 (OAUTH-02).
  */
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { LATEST_PROTOCOL_VERSION } from '@modelcontextprotocol/sdk/types.js';
 import { TOOL_CONTRACTS, type ToolName } from '@sheet-music/music-contracts';
+import { TEST_USER_A } from '@sheet-music/persistence-postgres/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { type McpTestBackend, openMcpTestBackend } from './support/backend';
 import { type BuiltView, buildView } from './support/built-view';
-import { type RunningMcpServer, connectClient, startMcpServer } from './support/mcp-harness';
+import { type RunningMcpApp, startMcpApp } from './support/mcp-harness';
 
 const VIEW_URI = 'ui://sheet-music/score-view';
 const VIEW_MIME_TYPE = 'text/html;profile=mcp-app';
-const ASSET_ORIGIN = 'https://assets.sheet-music.test';
 
 /** Reviewed manifest: what each tool must declare and teach the model. */
 interface ManifestEntry {
@@ -87,20 +91,23 @@ const MANIFEST: readonly ManifestEntry[] = [
 ];
 
 let view: BuiltView;
-let server: RunningMcpServer;
+let backend: McpTestBackend;
+let app: RunningMcpApp;
 let client: Client;
 let tools: Tool[];
 
 beforeAll(async () => {
   view = await buildView();
-  server = await startMcpServer({ viewHtml: view.html, assetOrigin: ASSET_ORIGIN });
-  client = await connectClient(server.url);
+  backend = await openMcpTestBackend();
+  app = await startMcpApp({ stores: backend.persistence, viewHtml: view.html });
+  client = await app.connect(await app.token(TEST_USER_A.id));
   tools = (await client.listTools()).tools;
 });
 
 afterAll(async () => {
   await client?.close();
-  await server?.close();
+  await app?.close();
+  await backend?.close();
   await view?.dispose();
 });
 
@@ -166,12 +173,14 @@ describe('MCP-P01 tool manifest', () => {
 });
 
 describe('MCP-P01 View resource', () => {
-  const ui = {
-    csp: { connectDomains: [ASSET_ORIGIN], resourceDomains: [ASSET_ORIGIN] },
+  /** The View loads its assets from this server: MCP_PUBLIC_URL's origin is the only allowed one. */
+  const uiMeta = () => ({
+    csp: { connectDomains: [app.origin], resourceDomains: [app.origin] },
     prefersBorder: true,
-  };
+  });
 
   it('lists the score View as the only resource, with its CSP', async () => {
+    const ui = uiMeta();
     const { resources } = await client.listResources();
     expect(resources).toEqual([
       {
@@ -184,10 +193,23 @@ describe('MCP-P01 View resource', () => {
     ]);
   });
 
-  it('reads the production-built single-file View, byte for byte', async () => {
+  it('reads the production-built single-file View, byte for byte except the injected asset origin', async () => {
+    const placeholder = '<meta name="sheet-music-asset-origin" content="" />';
+    expect(view.html.split(placeholder)).toHaveLength(2);
+    const ui = uiMeta();
+
     const { contents } = await client.readResource({ uri: VIEW_URI });
+
     expect(contents).toEqual([
-      { uri: VIEW_URI, mimeType: VIEW_MIME_TYPE, text: view.html, _meta: { ui } },
+      {
+        uri: VIEW_URI,
+        mimeType: VIEW_MIME_TYPE,
+        text: view.html.replace(
+          placeholder,
+          `<meta name="sheet-music-asset-origin" content="${app.origin}" />`,
+        ),
+        _meta: { ui },
+      },
     ]);
   });
 

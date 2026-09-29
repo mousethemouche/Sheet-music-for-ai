@@ -6,17 +6,18 @@
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type ToolDependencies, registerScoreTools } from './tools';
-import { type ViewResourceConfig, registerScoreView } from './view-resource';
+import { type ScoreViewResource, registerScoreView } from './view-resource';
 
 export const SERVER_INFO = { name: 'sheet-music-for-ai', version: '0.0.0' } as const;
 
 export interface McpServerDependencies extends ToolDependencies {
-  readonly config: ViewResourceConfig;
+  /** The View resource, prepared once by the composition root (`prepareScoreView`). */
+  readonly view: ScoreViewResource;
 }
 
 export function createMcpServer(deps: McpServerDependencies): McpServer {
   const server = new McpServer(SERVER_INFO);
   registerScoreTools(server, deps);
-  registerScoreView(server, deps.config);
+  registerScoreView(server, deps.view);
   return server;
 }

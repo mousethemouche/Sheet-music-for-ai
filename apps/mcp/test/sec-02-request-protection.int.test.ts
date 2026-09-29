@@ -1,44 +1,55 @@
 /**
- * SEC-02, MCP app (issue #24): the production request protection
- * (mcpRequestProtection) in the app's protection slot, over real HTTP.
+ * SEC-02, MCP app (issue #24): the production request protection in the
+ * production composition (createMcpApp), over real HTTP.
  *
- * - It runs for EVERY method on /mcp, before the POST route and the 405
- *   fallback: a forbidden or "null" Origin is 403 on POST, GET, DELETE and
- *   OPTIONS alike (MCP Streamable HTTP: invalid Origin -> 403), and a CORS
- *   preflight from an allowed origin is answered 204.
+ * - It runs for EVERY method on /mcp, before authentication, the POST route
+ *   and the 405 fallback: a forbidden or "null" Origin is 403 on POST, GET,
+ *   DELETE and OPTIONS alike, even without a token (MCP Streamable HTTP:
+ *   invalid Origin -> 403), and a CORS preflight (which never carries
+ *   credentials) from an allowed origin is answered 204.
  * - An allowed origin gets CORS headers on its answers; CORS grants nothing
- *   by itself. A server-to-server call without Origin goes on.
+ *   by itself (the token still decides). A server-to-server call without
+ *   Origin goes on, and its authenticated answer is private
+ *   (`Cache-Control: private, no-store`, `Vary: Authorization`, `nosniff`).
  * - A declared body over the cap is 413 and a chunked body 411, both before
  *   an MCP server is built (no expensive work).
  * - Every rejection carries the server's correlation ID, and nothing is
- *   written: no MCP server built, no draft stored.
+ *   written: no request reaches the MCP transport, no draft is stored.
  */
 import { request } from 'node:http';
+import { TEST_USER_A } from '@sheet-music/persistence-postgres/testing';
 import { RICH_WIRE_FIXTURE, cloneFixture } from '@sheet-music/test-fixtures';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { type RunningMcpServer, startMcpServer } from './support/mcp-harness';
+import { type McpTestBackend, openMcpTestBackend, rowCounts } from './support/backend';
+import { type RunningMcpApp, startMcpApp } from './support/mcp-harness';
 
 const ALLOWED = 'https://app.example.test';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const MCP_ACCEPT = 'application/json, text/event-stream';
 
-let server: RunningMcpServer;
+let backend: McpTestBackend;
+let app: RunningMcpApp;
+let token: string;
 let builtBefore: number;
 
 beforeAll(async () => {
-  server = await startMcpServer(
-    { viewHtml: '<!doctype html><title>View</title>' },
-    { protection: { allowedOrigins: [ALLOWED] } },
-  );
+  backend = await openMcpTestBackend();
+  app = await startMcpApp({ stores: backend.persistence, allowedOrigins: [ALLOWED] });
+  token = await app.token(TEST_USER_A.id);
 });
 
 beforeEach(() => {
-  builtBefore = server.serversCreated();
+  builtBefore = app.transportRequests();
 });
 
 afterAll(async () => {
-  await server?.close();
+  await app?.close();
+  await backend?.close();
 });
+
+async function draftCount(): Promise<number> {
+  return (await rowCounts(backend)).drafts;
+}
 
 interface RawResponse {
   readonly status: number;
@@ -57,7 +68,7 @@ function rawRequest(
   body?: string,
 ): Promise<RawResponse> {
   return new Promise((resolve, reject) => {
-    const req = request(server.url, { method, headers }, (res) => {
+    const req = request(app.url, { method, headers }, (res) => {
       let text = '';
       res.setEncoding('utf8');
       res.on('data', (chunk: string) => (text += chunk));
@@ -119,8 +130,8 @@ describe('SEC-02 Origin policy on every method of /mcp', () => {
 
       expectTransportError(response, 403, 'FORBIDDEN_ORIGIN');
       expect(response.headers['access-control-allow-origin']).toBeUndefined();
-      expect(server.serversCreated()).toBe(builtBefore);
-      expect(server.stores.draftCount).toBe(0);
+      expect(app.transportRequests()).toBe(builtBefore);
+      expect(await draftCount()).toBe(0);
     },
   );
 
@@ -139,11 +150,15 @@ describe('SEC-02 Origin policy on every method of /mcp', () => {
       vary: 'Origin',
     });
     expect(response.body).toBe('');
-    expect(server.serversCreated()).toBe(builtBefore);
+    expect(app.transportRequests()).toBe(builtBefore);
   });
 
   it('keeps GET a 405 for an allowed origin, with CORS headers so the browser can read it', async () => {
-    const response = await rawRequest('GET', { origin: ALLOWED, accept: MCP_ACCEPT });
+    const response = await rawRequest('GET', {
+      origin: ALLOWED,
+      accept: MCP_ACCEPT,
+      authorization: `Bearer ${token}`,
+    });
 
     expect(response.status).toBe(405);
     expect(response.headers['allow']).toBe('POST');
@@ -159,6 +174,7 @@ describe('SEC-02 Origin policy on every method of /mcp', () => {
       'POST',
       {
         ...headers,
+        authorization: `Bearer ${token}`,
         accept: MCP_ACCEPT,
         'content-type': 'application/json',
         'content-length': String(Buffer.byteLength(body)),
@@ -169,10 +185,14 @@ describe('SEC-02 Origin policy on every method of /mcp', () => {
     expect(response.status).toBe(200);
     expect(response.headers['access-control-allow-origin']).toBe(allowOrigin);
     expect(response.headers['x-correlation-id']).toMatch(UUID);
+    // An authenticated answer belongs to one user: never stored by a cache, never sniffed.
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(String(response.headers['vary'])).toMatch(/(^|, )Authorization(,|$)/);
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
     const tools = (JSON.parse(response.body) as { result: { tools: { name: string }[] } }).result
       .tools;
     expect(tools.map((tool) => tool.name)).toContain('create_score');
-    expect(server.serversCreated()).toBe(builtBefore + 1);
+    expect(app.transportRequests()).toBe(builtBefore + 1);
   });
 });
 
@@ -186,7 +206,7 @@ describe('SEC-02 body cap before any MCP work', () => {
 
     expectTransportError(response, 413, 'PAYLOAD_TOO_LARGE');
     expect(response.headers['connection']).toBe('close');
-    expect(server.serversCreated()).toBe(builtBefore);
+    expect(app.transportRequests()).toBe(builtBefore);
   });
 
   it('answers a chunked body (no declared length) with 411', async () => {
@@ -197,7 +217,7 @@ describe('SEC-02 body cap before any MCP work', () => {
     });
 
     expectTransportError(response, 411, 'LENGTH_REQUIRED');
-    expect(server.serversCreated()).toBe(builtBefore);
-    expect(server.stores.draftCount).toBe(0);
+    expect(app.transportRequests()).toBe(builtBefore);
+    expect(await draftCount()).toBe(0);
   });
 });

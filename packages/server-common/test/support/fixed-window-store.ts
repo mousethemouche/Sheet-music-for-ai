@@ -2,7 +2,7 @@
  * Test double of the RateLimitStore contract (ERRORS_AND_SECURITY.md §3.3):
  * fixed windows aligned on multiples of `windowMs` since the Unix epoch.
  * Instance-local, so it is NOT production protection; the shared Postgres
- * store is verified by the SEC-03 integration test of the wiring phase.
+ * store is verified by SEC-03 store and SEC-03 wire (ERRORS_AND_SECURITY.md §6).
  */
 import type { RateLimitStore, RateLimitWindow } from '../../src/index';
 

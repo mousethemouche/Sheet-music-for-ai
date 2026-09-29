@@ -9,7 +9,7 @@
     "build:server": "vite build",
     "dev": "pnpm run build:view && MCP_VIEW_HTML_PATH=dist/view/index.html tsx watch src/main.ts",
     "start": "node dist/server/main.js",
-    "typecheck": "tsc -p tsconfig.json && tsc -p view/tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json && tsc -p view/tsconfig.json && tsc -p test/mcp-ui/tsconfig.json"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "catalog:",

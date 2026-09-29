@@ -20,8 +20,8 @@ import type { ErrorCode, ErrorDetail } from '@sheet-music/music-contracts';
 
 /**
  * Codes raised by request protection before any use case runs. They are not
- * application codes; see ERRORS_AND_SECURITY.md for the pending music-contracts
- * envelope update.
+ * application codes; music-contracts' envelope schema accepts them too
+ * (`ENVELOPE_ERROR_CODES`, ERRORS_AND_SECURITY.md §1.2).
  */
 export const TRANSPORT_ERROR_CODES = [
   'FORBIDDEN_ORIGIN',

@@ -1,10 +1,11 @@
 # Authentication for the MCP resource and the HTTP API
 
 Verifier and identity part of issue #26 (ADR-005). Package:
-`packages/auth-jwt`. The HTTP/MCP wiring (guards, routes, the OAUTH-02
-integration test and the OAUTH-04 provider smoke) comes in a later phase; §6
-lists what it must do. Research below was done on 2026-09-28 against the
-primary sources listed at the end.
+`packages/auth-jwt`. The HTTP/MCP wiring is in place (§6: `apps/mcp/src/auth.ts`,
+`apps/api/src/auth.ts`) with its OAUTH-02 wire tests (§7); the OAUTH-04
+provider smoke against the real Supabase project and a real host remains a
+release gate. Research below was done on 2026-09-28 against the primary
+sources listed at the end.
 
 ## 1. What Supabase actually issues
 
@@ -203,7 +204,9 @@ instant invalidation exists, and none is claimed.
   `protectedResourceMetadata({ scopesSupported })` and to
   `rejectionResponse(reason, { scope })`; both builders already support it.
 
-## 6. Wiring checklist (later phase)
+## 6. Wiring (done)
+
+What the apps do, and where (MCP_SERVER.md §1-§2, API.md):
 
 1. Configuration from the environment: the Supabase project URL
    (`supabaseAuthEndpoints(url)` derives issuer and JWKS URL) and the public
@@ -215,21 +218,24 @@ instant invalidation exists, and none is claimed.
    signed-off override, logged at start), answer
    `rejectionResponse(...)` with an `UNAUTHENTICATED` envelope body (#19) on
    failure, and pass `result.principal` to the tool handlers. Never forward
-   the token anywhere.
+   the token anywhere. Done in `apps/mcp/src/auth.ts` (`createMcpAuth`,
+   `protectedResourceMetadataHandler`, `mcpBearerGuard`), composed by
+   `createMcpApp`.
 3. apps/api: the same verifier with `client: { kind: 'session' }` on each
-   protected route (401 challenge: `WWW-Authenticate: Bearer`).
+   protected route (401 challenge: `WWW-Authenticate: Bearer`). Done in
+   `apps/api/src/auth.ts` (`createSessionVerifier`, `SessionAuthGuard`).
 4. Log `reason` with the correlation ID; never log the token (#19 redaction
    masks it anyway).
 
 ## 7. Tests
 
-| Test            | File                                                | Covers                                                                                                                                                                                                                                                                                |
-| --------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OAUTH-01        | `packages/auth-jwt/test/oauth-01-verifier.test.ts`  | accepted tokens incl. tolerance edges and resource-bound `aud`; bad signature, swapped payload, embedded attacker key, unknown kid, issuer, audience, expiry, nbf/iat, missing claims, roles, HS256/none/RS256, client binding; configuration; bounded remote JWKS refresh and outage |
-| OAUTH-02 (unit) | `packages/auth-jwt/test/oauth-02-discovery.test.ts` | metadata document and URL, canonical resource, challenge per reason, bearer extraction                                                                                                                                                                                                |
-| OAUTH-03        | `packages/auth-jwt/test/oauth-03-identity.test.ts`  | A/B principals, email/metadata/look-alike claims ignored, email change, frozen principal                                                                                                                                                                                              |
-| OAUTH-02 (wire) | wiring phase                                        | 401 + reachable metadata on the real `/mcp`, one expired/wrong-resource request, one missing-token check per protected REST route                                                                                                                                                     |
-| OAUTH-04        | release smoke (release gate, §4)                    | real Supabase OAuth flow with a real host; the access token carries the MCP resource in `aud` (hook) and is accepted, session and foreign-audience tokens refused; the issues of §1; the scope set of §5                                                                              |
+| Test            | File                                                                                         | Covers                                                                                                                                                                                                                                                                                |
+| --------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OAUTH-01        | `packages/auth-jwt/test/oauth-01-verifier.test.ts`                                           | accepted tokens incl. tolerance edges and resource-bound `aud`; bad signature, swapped payload, embedded attacker key, unknown kid, issuer, audience, expiry, nbf/iat, missing claims, roles, HS256/none/RS256, client binding; configuration; bounded remote JWKS refresh and outage |
+| OAUTH-02 (unit) | `packages/auth-jwt/test/oauth-02-discovery.test.ts`                                          | metadata document and URL, canonical resource, challenge per reason, bearer extraction                                                                                                                                                                                                |
+| OAUTH-03        | `packages/auth-jwt/test/oauth-03-identity.test.ts`                                           | A/B principals, email/metadata/look-alike claims ignored, email change, frozen principal                                                                                                                                                                                              |
+| OAUTH-02 (wire) | `apps/mcp/test/oauth-02-mcp-auth.int.test.ts`, `apps/api/test/oauth-02-api-auth.int.test.ts` | 401 + reachable metadata on the real `/mcp`, one expired/wrong-resource request, one missing-token check per protected REST route                                                                                                                                                     |
+| OAUTH-04        | release smoke (release gate, §4)                                                             | real Supabase OAuth flow with a real host; the access token carries the MCP resource in `aud` (hook) and is accepted, session and foreign-audience tokens refused; the issues of §1; the scope set of §5                                                                              |
 
 ## Sources
 

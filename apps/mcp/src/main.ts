@@ -1,74 +1,97 @@
 /**
- * Composition root of the MCP server process.
- *
- * Phase note: the Postgres stores (#9/#22), the auth middleware (#26) and the
- * rate limits (#24) are wired in the next phase. Until then no request is
- * authenticated: every tool call fails before touching storage (a use case
- * without principal is a server fault, reported as INTERNAL and logged), and
- * the stores below only reject. Discovery, the View resource and request
- * protection (correlation, Origin, body cap) work as in production.
- *
- * Environment: PORT (default 3001), MCP_VIEW_HTML_PATH (default: the built
- * View next to this bundle, dist/view/index.html), MCP_ASSET_BASE_URL
- * (optional public origin of SoundFont/fonts, declared in the View CSP),
- * MCP_ALLOWED_ORIGINS (optional comma-separated browser origins allowed to
- * call /mcp; default none).
+ * Process entry point of the MCP server (MCP_SERVER.md §7): reads and
+ * validates the environment (config.ts), opens the Postgres pool, composes
+ * the production app (composition.ts), listens on PORT, and shuts down
+ * gracefully on SIGTERM/SIGINT (stop accepting, finish in-flight requests,
+ * then close the pool). A configuration or startup problem exits with code 1
+ * and a log line that names the variable, never its value.
  */
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createLogger } from '@sheet-music/server-common';
-import { MCP_PATH, createMcpHttpApp } from './app';
-import { principalFromAuthInfo } from './principal';
-import { mcpRequestProtection } from './protection';
-import { createMcpServer } from './server';
-import { type ScoreStores, createMcpUseCases } from './use-cases';
-import { assetOriginOf } from './view-resource';
+import { createPostgresPersistence } from '@sheet-music/persistence-postgres';
+import { type Logger, createLogger } from '@sheet-music/server-common';
+import { createMcpApp } from './composition';
+import { type McpConfig, McpConfigError, loadMcpConfig } from './config';
+import { createViewAssetsRouter } from './static-assets';
 
-const DEFAULT_PORT = 3001;
+/** In-flight requests get this long after a stop signal before their connections are closed. */
+const SHUTDOWN_GRACE_MS = 10_000;
 
-function notConfigured(): Promise<never> {
-  return Promise.reject(new Error('No score store is configured yet (#9/#22).'));
+/** The built View: dist/view/index.html next to this bundle unless MCP_VIEW_HTML_PATH says otherwise. */
+function viewHtmlPath(config: McpConfig): string {
+  return config.viewHtmlPath === undefined
+    ? fileURLToPath(new URL('../view/index.html', import.meta.url))
+    : resolve(config.viewHtmlPath);
 }
 
-const STORES_NOT_CONFIGURED: ScoreStores = {
-  drafts: {
-    create: notConfigured,
-    get: notConfigured,
-    update: notConfigured,
-    delete: notConfigured,
-  },
-  saved: { get: notConfigured, update: notConfigured, search: notConfigured },
-  promotion: { promote: notConfigured },
-};
+function start(logger: Logger): void {
+  const config = loadMcpConfig(process.env);
+  const viewPath = viewHtmlPath(config);
+  // Both fail fast when the View was not built; createMcpApp then refuses a
+  // document without the asset-origin placeholder (a foreign or stale build).
+  const viewHtml = readFileSync(viewPath, 'utf8');
+  const assets = createViewAssetsRouter(join(dirname(viewPath), 'assets'));
+  const persistence = createPostgresPersistence({
+    connectionString: config.databaseUrl,
+    onIdleError: (error) => logger.warn('db.idle_connection_error', { error }),
+  });
+  const { app, resource, metadataUrl } = createMcpApp({
+    config,
+    stores: persistence,
+    viewHtml,
+    assets,
+    logger,
+  });
 
-const port = Number(process.env['PORT'] ?? DEFAULT_PORT);
-const viewHtmlPath =
-  process.env['MCP_VIEW_HTML_PATH'] === undefined
-    ? fileURLToPath(new URL('../view/index.html', import.meta.url))
-    : resolve(process.env['MCP_VIEW_HTML_PATH']);
-const assetBaseUrl = process.env['MCP_ASSET_BASE_URL'];
-const allowedOrigins = (process.env['MCP_ALLOWED_ORIGINS'] ?? '')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter((origin) => origin !== '');
+  const server = app.listen(config.port, () => {
+    logger.info('server.started', {
+      port: config.port,
+      resource,
+      metadataUrl,
+      audienceMode: config.audienceMode,
+    });
+  });
+  server.on('error', (error) => {
+    logger.error('server.failed', { error });
+    void persistence.close();
+    process.exitCode = 1;
+  });
 
-const config = {
-  viewHtml: readFileSync(viewHtmlPath, 'utf8'),
-  ...(assetBaseUrl === undefined ? {} : { assetOrigin: assetOriginOf(assetBaseUrl) }),
-};
-const useCases = createMcpUseCases(STORES_NOT_CONFIGURED);
+  let stopping = false;
+  const stop = (signal: NodeJS.Signals): void => {
+    if (stopping) {
+      return;
+    }
+    stopping = true;
+    logger.info('server.stopping', { signal });
+    server.close((error) => {
+      void persistence.close().then(
+        () => {
+          logger.info('server.stopped');
+          process.exitCode = error === undefined ? 0 : 1;
+        },
+        (closeError: unknown) => {
+          logger.error('server.stop_failed', { error: closeError });
+          process.exitCode = 1;
+        },
+      );
+    });
+    server.closeIdleConnections();
+    setTimeout(() => server.closeAllConnections(), SHUTDOWN_GRACE_MS).unref();
+  };
+  process.once('SIGTERM', stop);
+  process.once('SIGINT', stop);
+}
+
 const logger = createLogger();
-
-createMcpHttpApp({
-  protection: mcpRequestProtection({ allowedOrigins }),
-  createServer: () =>
-    createMcpServer({
-      useCases,
-      resolvePrincipal: principalFromAuthInfo,
-      logger,
-      config,
-    }),
-}).listen(port, () => {
-  console.log(`MCP server listening on http://localhost:${port}${MCP_PATH}`);
-});
+try {
+  start(logger);
+} catch (error) {
+  if (error instanceof McpConfigError) {
+    logger.error('config.invalid', { problems: error.problems });
+  } else {
+    logger.error('server.start_failed', { error });
+  }
+  process.exitCode = 1;
+}

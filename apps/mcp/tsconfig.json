@@ -6,5 +6,7 @@
     // (StreamableHTTPServerTransport is not assignable to its own Transport).
     "exactOptionalPropertyTypes": false
   },
-  "include": ["src", "test"]
+  "include": ["src", "test"],
+  // Browser-side test code has its own program with the DOM library.
+  "exclude": ["test/mcp-ui"]
 }

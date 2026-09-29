@@ -2,12 +2,11 @@
 
 Shared server contract of issues #19 (errors, logging, correlation) and #24
 (request protection, input safety). Package: `packages/server-common`, used
-by apps/api (NestJS on Express) and apps/mcp (Express + MCP SDK). apps/mcp
-already runs its tools through `runUseCase`/`toMcpToolError` and mounts
-correlation, Origin policy and body cap for every method (MCP_SERVER.md §1);
-the remaining wiring (apps/api, the rate limits on the Postgres store,
-authentication) and wire tests come in a later phase; §5 lists what they must
-do. Authentication itself is in [AUTH_MCP_OAUTH.md](AUTH_MCP_OAUTH.md).
+by apps/api (NestJS on Express, [API.md](API.md)) and apps/mcp (Express + MCP
+SDK, [MCP_SERVER.md](MCP_SERVER.md) §1). Both apps are wired: correlation,
+Origin policy, body cap, the two rate limits on the shared Postgres store,
+authentication and the error mapping, with wire tests per app (§5, §6).
+Authentication itself is in [AUTH_MCP_OAUTH.md](AUTH_MCP_OAUTH.md).
 
 ## 1. One error contract
 
@@ -42,11 +41,9 @@ Both transports serialize `{ code, message, details?, correlationId? }`:
 - messages come from the use cases or this package and never quote request
   text.
 
-**Pending contract change.** music-contracts' `errorEnvelopeSchema` accepts
-only the application and domain codes, so a client that validates error
-bodies with it rejects the four transport codes. music-contracts (its owner)
-must add them; until then, clients must handle an unknown code by its HTTP
-status.
+music-contracts' `errorEnvelopeSchema` accepts the application and domain
+codes and the four transport codes (`ENVELOPE_ERROR_CODES`), so one schema
+parses every error body of both apps (docs/testing/HARNESS.md §5).
 
 ### 1.3 HTTP
 
@@ -79,8 +76,13 @@ by auth-jwt (`rejectionResponse`); a key-source outage during verification is
   returned one of them from inside a tool, that is a server fault:
   `toMcpToolError` reports it as `INTERNAL`.
 - **Protocol errors** (malformed JSON, invalid JSON-RPC, unknown method or
-  tool, unsupported protocol version) stay the MCP SDK's own JSON-RPC errors;
-  this package does not produce or remap them.
+  tool, unsupported protocol version) are JSON-RPC errors, not envelopes:
+  the SDK's own, plus the few apps/mcp answers before the transport
+  (non-JSON body 415, malformed JSON `-32700`, JSON-RPC batch `-32600`,
+  MCP_SERVER.md §1). This package does not produce or remap them.
+- **Anything thrown in the HTTP layer** of either app is the 500 `INTERNAL`
+  envelope through `sendError` (with the correlation ID), never a JSON-RPC
+  or framework error page.
 
 ### 1.5 Running a use case (`runUseCase`)
 
@@ -214,6 +216,10 @@ across serverless instances; there is deliberately no in-memory store.
   clients share one counter. A client rotating IPv6 addresses gets separate
   counters; the per-owner rule is the one that bounds an authenticated user.
 - Per-owner subject: the verified `UserId`, after authentication.
+- One request, one operation: the API has one use case per route, and
+  apps/mcp refuses JSON-RPC batches (400 `-32600`, MCP_SERVER.md §1), so one
+  counted `/mcp` request runs at most one tool call. Without that, the pinned
+  SDK transport would run up to 100 batched tool calls per counted request.
 
 Limits and windows are wiring configuration, tuned against real use.
 
@@ -255,36 +261,36 @@ rely on the existing validators; they are not re-implemented here.
   `DEPENDENCY_UNAVAILABLE` (a misleading 503 with an error log) instead of a 400. The fix belongs to music-domain (#2: reject `\p{Cc}` in ScoreSpec
   text, as the library metadata already does) or to the repository (#9).
 
-## 5. Wiring checklist (later phase)
+## 5. Wiring (done)
 
-1. Both apps: `correlationMiddleware()`, `originPolicy(...)`,
-   `bodySizeLimit()`, per-IP `rateLimit(...)`, auth guard, per-owner
-   `rateLimit(...)`; `trust proxy` set for the deployment. Mount the chain up
-   to the per-IP limit for every method of a route (apps/mcp: the
-   `protection` slot), so a preflight or a forbidden Origin is answered
-   before any 404/405 fallback. apps/mcp has correlation, Origin and body cap
-   (`mcpRequestProtection`); the two rate limits and the auth guard remain.
-2. apps/api: a Nest exception filter that sends `toHttpError` through
-   `sendError` for every failure, `internalError` for anything thrown.
-3. apps/mcp: done. Tool handlers call `runUseCase` and return
-   `toMcpToolError` with the request's correlation ID; the MCP transport body
-   cap (`maxRequestBodySize`) stays at the same limit as defence in depth.
-4. ERR-I01: done for MCP (`apps/mcp/test/err-i01-dependency-failure.int.test.ts`);
-   one through Nest remains. SEC-02: done for MCP
-   (`apps/mcp/test/sec-02-request-protection.int.test.ts`); apps/api remains.
-   SEC-03: the Postgres store itself is covered
-   (`packages/persistence-postgres/test/sec-03-rate-limit-store.int.test.ts`);
-   the limiter middleware on that store behind a real app (over-limit, reset,
-   independent owner) remains.
+1. Both apps mount `correlationMiddleware()`, `originPolicy(...)`,
+   `bodySizeLimit()`, the per-IP `rateLimit(...)`, the auth guard and the
+   per-owner `rateLimit(...)`, with `trust proxy` from configuration. The
+   chain up to the per-IP limit runs for every method of a route (apps/mcp:
+   the `protection` slot), so a preflight or a forbidden Origin is answered
+   before any 404/405 fallback. apps/mcp: `createMcpApp`
+   (`apps/mcp/src/composition.ts`); apps/api: `createApiApp`
+   (`apps/api/src/app.ts`).
+2. apps/api: the Nest exception filter sends `toHttpError` through
+   `sendError` for every failure, `internalError` for anything thrown
+   (`apps/api/src/errors.ts`).
+3. apps/mcp: tool handlers call `runUseCase` and return `toMcpToolError`
+   with the request's correlation ID; an unexpected throw in the HTTP layer
+   is `sendError(internalError(...))`; authenticated answers are
+   `Cache-Control: private, no-store`, `Vary: Authorization`, `nosniff`; the
+   JSON body is parsed once, capped at the same limit, and batches are
+   refused.
+4. Wire tests: §6.
 
 ## 6. Tests
 
-| Test                                 | File                                                                                                          | Covers                                                                                                                           |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| ERR-01                               | `packages/server-common/test/err-01-error-mapping.test.ts`                                                    | every code's status and MCP disposition, envelope fields and contract schema, MCP result shape, cause never serialized, INTERNAL |
-| ERR-02                               | `packages/server-common/test/err-02-redaction-context.test.ts`                                                | deep redaction, error causes and stacks, unreadable fields, concurrent correlation, header validation, `runUseCase`              |
-| SEC-01                               | `packages/server-common/test/sec-01-input-safety.test.ts`                                                     | colors, prototype-shaped payloads, external-asset fields, free-text policy, log forging                                          |
-| SEC-03 (unit)                        | `packages/server-common/test/sec-03-rate-limit.test.ts`                                                       | window boundaries with a fake clock, rounding, owner and IP independence, 429 and fail-closed 503 without running the handler    |
-| SEC-03 (store)                       | `packages/persistence-postgres/test/sec-03-rate-limit-store.int.test.ts`                                      | the shared Postgres store: windows, long windows, concurrent instances, pruning of idle keys (DATABASE.md §6)                    |
-| SEC-02, ERR-I01 (MCP)                | `apps/mcp/test/sec-02-request-protection.int.test.ts`, `apps/mcp/test/err-i01-dependency-failure.int.test.ts` | MCP_SERVER.md §8                                                                                                                 |
-| ERR-I01, SEC-02 (api), SEC-03 (wire) | wiring phase                                                                                                  | §5                                                                                                                               |
+| Test                                 | File                                                                                                                                                         | Covers                                                                                                                           |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| ERR-01                               | `packages/server-common/test/err-01-error-mapping.test.ts`                                                                                                   | every code's status and MCP disposition, envelope fields and contract schema, MCP result shape, cause never serialized, INTERNAL |
+| ERR-02                               | `packages/server-common/test/err-02-redaction-context.test.ts`                                                                                               | deep redaction, error causes and stacks, unreadable fields, concurrent correlation, header validation, `runUseCase`              |
+| SEC-01                               | `packages/server-common/test/sec-01-input-safety.test.ts`                                                                                                    | colors, prototype-shaped payloads, external-asset fields, free-text policy, log forging                                          |
+| SEC-03 (unit)                        | `packages/server-common/test/sec-03-rate-limit.test.ts`                                                                                                      | window boundaries with a fake clock, rounding, owner and IP independence, 429 and fail-closed 503 without running the handler    |
+| SEC-03 (store)                       | `packages/persistence-postgres/test/sec-03-rate-limit-store.int.test.ts`                                                                                     | the shared Postgres store: windows, long windows, concurrent instances, pruning of idle keys (DATABASE.md §6)                    |
+| SEC-02, SEC-03 (wire), ERR-I01 (MCP) | `apps/mcp/test/sec-02-request-protection.int.test.ts`, `apps/mcp/test/sec-03-rate-limit.int.test.ts`, `apps/mcp/test/err-i01-dependency-failure.int.test.ts` | MCP_SERVER.md §8: Origin, body cap, private answers; per-owner and per-IP limits, batch refusal; store outage                    |
+| ERR-01 (MCP HTTP last resort)        | `apps/mcp/src/app.test.ts`                                                                                                                                   | a throwing or rejecting handler of the `/mcp` chain gives the correlated 500 `INTERNAL` envelope                                 |
+| ERR-I01, SEC-02, SEC-03 (api)        | `apps/api/test/err-i01-dependency-failure.int.test.ts`, `apps/api/test/sec-02-sec-03-api-protection.int.test.ts`                                             | API.md §4                                                                                                                        |
