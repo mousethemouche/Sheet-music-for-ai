@@ -1,0 +1,20 @@
+{
+  "name": "@sheet-music/renderer-vexflow",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@sheet-music/music-domain": "workspace:*",
+    "@sheet-music/renderer-core": "workspace:*",
+    "vexflow": "catalog:"
+  },
+  "devDependencies": {
+    "@sheet-music/test-fixtures": "workspace:*"
+  }
+}

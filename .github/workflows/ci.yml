@@ -1,0 +1,238 @@
+name: CI
+
+# Required merge checks and what each job proves: docs/testing/CI.md.
+on:
+  push:
+    branches: [main]
+    # Release tags run every job, MCP-UI included (TEST_PLAN §8: full suite before release).
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect code changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+      mcp_ui: ${{ steps.diff.outputs.mcp_ui }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # TEST_PLAN §8 / CI-05:
+      # - code: any changed file outside docs/ and Markdown. Documentation-only
+      #   changes start no database and no browser (only the `docs` job runs).
+      # - mcp_ui: a change the MCP-UI suite depends on: the MCP server and View,
+      #   any workspace package (contracts, domain, renderer, playback, score-ui,
+      #   ui, auth, persistence, fixtures), the playback assets, migrations, the
+      #   lockfile and the shared build/test configuration.
+      # A manual run, a release tag or an unknown base runs everything.
+      - id: diff
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          base="$PUSH_BEFORE_SHA"
+          if [ "$EVENT_NAME" = "pull_request" ]; then base="$PR_BASE_SHA"; fi
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$REF_TYPE" = "tag" ] \
+            || [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "mcp_ui=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          code_files="$(git diff --name-only "$base" HEAD | grep -vE '^docs/|\.md$' || true)"
+          if [ -n "$code_files" ]; then code=true; else code=false; fi
+          if grep -qE '^(apps/mcp/|packages/|assets/|supabase/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|vitest\.config\.ts$|tsconfig(\.base)?\.json$|\.nvmrc$|\.github/workflows/ci\.yml$)' <<< "$code_files"; then
+            mcp_ui=true
+          else
+            mcp_ui=false
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "mcp_ui=$mcp_ui" >> "$GITHUB_OUTPUT"
+
+  # Documentation-only changes: formatting only, no build, database or browser.
+  docs:
+    name: Documentation format
+    needs: changes
+    if: needs.changes.outputs.code == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prettier --check .
+
+  # CI-01 + CI-02 + CI-04 (manifest half): frozen install, typecheck, lint,
+  # independent app builds, unit/component tests (no DB, no browser; includes
+  # tools/inventory), the release tooling's offline tests and the
+  # architecture rules.
+  quality:
+    name: Typecheck, lint, build, unit/component tests, architecture
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      # The cross-app suites are not a workspace package; `pnpm typecheck` does not reach them.
+      - run: pnpm exec tsc -p tests/acceptance/tsconfig.json
+      - run: pnpm exec tsc -p tests/cloud/tsconfig.json
+      - run: pnpm lint
+      - run: pnpm build
+      - run: pnpm test
+      # Release tooling (docs/release): its own offline tests only. The cloud
+      # suites themselves need the deployed apps and run at release time.
+      - run: pnpm exec vitest run --project cloud tests/cloud/support tools/release
+      - run: pnpm check:arch
+
+  # CI-03 + CI-04 (exposed-surface half): every integration suite (apps,
+  # packages, tests/acceptance: FLOW-01, ACCESS-01, CI-04) against one
+  # throwaway Postgres; files run serially in one worker (vitest.config.ts).
+  integration:
+    name: Integration (Postgres)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sheet_music_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sheet_music_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Throwaway service-container credentials; never production data or secrets.
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/sheet_music_test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # = pnpm test:integration, plus a JUnit report for the failure artifact.
+      - run: pnpm exec vitest run --project integration --reporter=default --reporter=junit --outputFile.junit=test-results/integration.junit.xml
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-report
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # DEPLOY-01 (#16, docs/deploy/VERCEL.md §5): each Vercel project built with
+  # its vercel.json command, client output scanned, serverless entries served
+  # behind the local routing stand-in against a throwaway Postgres.
+  deploy:
+    name: Deployment configuration (DEPLOY-01)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sheet_music_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sheet_music_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Throwaway service-container credentials; the suite uses only sheet_music_test_deploy.
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/sheet_music_test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:deploy
+
+  # CI-05: the MCP-UI sub-suite (#11 MCP-UI-01..03 and the adapter runtime
+  # checks) in one Chromium worker, on the production-built bundles, for
+  # changes it depends on, manual runs and release tags.
+  mcp-ui:
+    name: MCP-UI integration (Chromium)
+    needs: changes
+    if: needs.changes.outputs.mcp_ui == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sheet_music_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d sheet_music_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/sheet_music_test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      # The suite exercises the production-built View bundle.
+      - run: pnpm build
+      # = pnpm test:mcp-ui, plus a JUnit report for the failure artifact.
+      - run: pnpm exec vitest run --project mcp-ui --reporter=default --reporter=junit --outputFile.junit=test-results/mcp-ui.junit.xml
+      # Test reports and Vitest's failure screenshots of test fixtures: no secret, no user data.
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mcp-ui-report
+          path: |
+            test-results/
+            **/__screenshots__/
+            !**/node_modules/**
+          if-no-files-found: ignore
+          retention-days: 7

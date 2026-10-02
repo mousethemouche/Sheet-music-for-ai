@@ -1,0 +1,427 @@
+{
+  "score": {
+    "version": 1,
+    "metadata": {
+      "title": "F08 expression"
+    },
+    "tempo": {
+      "bpm": 96
+    },
+    "timeSignature": {
+      "numerator": 4,
+      "denominator": 4
+    },
+    "annotations": [],
+    "staves": [
+      {
+        "id": "f08-rh",
+        "hand": "right",
+        "measures": [
+          {
+            "id": "f08-m1",
+            "number": 1,
+            "voices": [
+              {
+                "id": "f08-rh-m1-v1",
+                "events": [
+                  {
+                    "id": "f08-rh-n1",
+                    "type": "note",
+                    "pitch": {
+                      "step": "C",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "quarter"
+                    },
+                    "fingering": 1
+                  },
+                  {
+                    "id": "f08-rh-n2",
+                    "type": "note",
+                    "pitch": {
+                      "step": "D",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "quarter"
+                    },
+                    "fingering": 2
+                  },
+                  {
+                    "id": "f08-rh-n3",
+                    "type": "note",
+                    "pitch": {
+                      "step": "E",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "quarter"
+                    },
+                    "fingering": 3
+                  },
+                  {
+                    "id": "f08-rh-n4",
+                    "type": "note",
+                    "pitch": {
+                      "step": "F",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "quarter"
+                    },
+                    "fingering": 4
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "f08-m2",
+            "number": 2,
+            "voices": [
+              {
+                "id": "f08-rh-m2-v1",
+                "events": [
+                  {
+                    "id": "f08-rh-n5",
+                    "type": "note",
+                    "pitch": {
+                      "step": "C",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "quarter"
+                    }
+                  },
+                  {
+                    "id": "f08-rh-n6",
+                    "type": "note",
+                    "pitch": {
+                      "step": "D",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "quarter"
+                    }
+                  },
+                  {
+                    "id": "f08-rh-n7",
+                    "type": "note",
+                    "pitch": {
+                      "step": "E",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "quarter"
+                    }
+                  },
+                  {
+                    "id": "f08-rh-n8",
+                    "type": "note",
+                    "pitch": {
+                      "step": "F",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "quarter"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "f08-m3",
+            "number": 3,
+            "voices": [
+              {
+                "id": "f08-rh-m3-v1",
+                "events": [
+                  {
+                    "id": "f08-rh-n9",
+                    "type": "note",
+                    "pitch": {
+                      "step": "G",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "half"
+                    },
+                    "articulations": ["accent"],
+                    "tie": {
+                      "start": true
+                    }
+                  },
+                  {
+                    "id": "f08-rh-n10",
+                    "type": "note",
+                    "pitch": {
+                      "step": "G",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "quarter"
+                    },
+                    "tie": {
+                      "end": true
+                    }
+                  },
+                  {
+                    "id": "f08-rh-n11",
+                    "type": "note",
+                    "pitch": {
+                      "step": "G",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "quarter"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "f08-m4",
+            "number": 4,
+            "voices": [
+              {
+                "id": "f08-rh-m4-v1",
+                "events": [
+                  {
+                    "id": "f08-rh-n12",
+                    "type": "note",
+                    "pitch": {
+                      "step": "C",
+                      "alter": 0,
+                      "octave": 5
+                    },
+                    "duration": {
+                      "value": "quarter"
+                    },
+                    "articulations": ["accent"]
+                  },
+                  {
+                    "id": "f08-rh-n13",
+                    "type": "note",
+                    "pitch": {
+                      "step": "B",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "quarter"
+                    },
+                    "articulations": ["staccato"]
+                  },
+                  {
+                    "id": "f08-rh-n14",
+                    "type": "note",
+                    "pitch": {
+                      "step": "A",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "quarter"
+                    },
+                    "articulations": ["tenuto"]
+                  },
+                  {
+                    "id": "f08-rh-n15",
+                    "type": "note",
+                    "pitch": {
+                      "step": "G",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "quarter"
+                    },
+                    "articulations": ["marcato"]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "f08-lh",
+        "hand": "left",
+        "measures": [
+          {
+            "id": "f08-m1",
+            "number": 1,
+            "voices": [
+              {
+                "id": "f08-lh-m1-v1",
+                "events": [
+                  {
+                    "id": "f08-lh-n1",
+                    "type": "note",
+                    "pitch": {
+                      "step": "C",
+                      "alter": 0,
+                      "octave": 3
+                    },
+                    "duration": {
+                      "value": "whole"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "f08-m2",
+            "number": 2,
+            "voices": [
+              {
+                "id": "f08-lh-m2-v1",
+                "events": [
+                  {
+                    "id": "f08-lh-n2",
+                    "type": "note",
+                    "pitch": {
+                      "step": "C",
+                      "alter": 0,
+                      "octave": 3
+                    },
+                    "duration": {
+                      "value": "whole"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "f08-m3",
+            "number": 3,
+            "voices": [
+              {
+                "id": "f08-lh-m3-v1",
+                "events": [
+                  {
+                    "id": "f08-lh-n3",
+                    "type": "note",
+                    "pitch": {
+                      "step": "G",
+                      "alter": 0,
+                      "octave": 2
+                    },
+                    "duration": {
+                      "value": "whole"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "f08-m4",
+            "number": 4,
+            "voices": [
+              {
+                "id": "f08-lh-m4-v1",
+                "events": [
+                  {
+                    "id": "f08-lh-n4",
+                    "type": "note",
+                    "pitch": {
+                      "step": "C",
+                      "alter": 0,
+                      "octave": 3
+                    },
+                    "duration": {
+                      "value": "half"
+                    }
+                  },
+                  {
+                    "id": "f08-lh-n5",
+                    "type": "note",
+                    "pitch": {
+                      "step": "G",
+                      "alter": 0,
+                      "octave": 2
+                    },
+                    "duration": {
+                      "value": "half"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "slurs": [
+      {
+        "id": "f08-s1",
+        "startNoteId": "f08-rh-n1",
+        "endNoteId": "f08-rh-n4"
+      },
+      {
+        "id": "f08-s2",
+        "startNoteId": "f08-rh-n10",
+        "endNoteId": "f08-rh-n11"
+      }
+    ],
+    "dynamics": [
+      {
+        "id": "f08-d1",
+        "type": "mark",
+        "eventId": "f08-rh-n1",
+        "marking": "p"
+      },
+      {
+        "id": "f08-d2",
+        "type": "hairpin",
+        "direction": "crescendo",
+        "startEventId": "f08-rh-n1",
+        "endEventId": "f08-rh-n4"
+      },
+      {
+        "id": "f08-d3",
+        "type": "mark",
+        "eventId": "f08-rh-n12",
+        "marking": "f"
+      },
+      {
+        "id": "f08-d4",
+        "type": "hairpin",
+        "direction": "diminuendo",
+        "startEventId": "f08-rh-n12",
+        "endEventId": "f08-rh-n15"
+      }
+    ],
+    "pedal": [
+      {
+        "id": "f08-p1",
+        "type": "sustain",
+        "startEventId": "f08-lh-n3",
+        "endEventId": "f08-lh-n3"
+      },
+      {
+        "id": "f08-p2",
+        "type": "sustain",
+        "startEventId": "f08-lh-n4",
+        "endEventId": "f08-lh-n5"
+      }
+    ]
+  }
+}

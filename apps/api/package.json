@@ -1,0 +1,38 @@
+{
+  "name": "@sheet-music/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "build": "vite build",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@nestjs/common": "catalog:",
+    "@nestjs/core": "catalog:",
+    "@nestjs/platform-express": "catalog:",
+    "@sheet-music/auth-jwt": "workspace:*",
+    "@sheet-music/music-application": "workspace:*",
+    "@sheet-music/music-contracts": "workspace:*",
+    "@sheet-music/music-domain": "workspace:*",
+    "@sheet-music/persistence-postgres": "workspace:*",
+    "@sheet-music/server-common": "workspace:*",
+    "express": "catalog:",
+    "pg": "catalog:",
+    "reflect-metadata": "catalog:",
+    "rxjs": "catalog:"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "catalog:",
+    "@sheet-music/test-fixtures": "workspace:*",
+    "@swc/core": "catalog:",
+    "@types/express": "catalog:",
+    "@types/node": "catalog:",
+    "unplugin-swc": "catalog:",
+    "vite": "catalog:"
+  }
+}

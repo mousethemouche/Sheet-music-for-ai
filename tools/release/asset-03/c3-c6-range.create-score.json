@@ -1,0 +1,434 @@
+{
+  "score": {
+    "version": 1,
+    "metadata": {
+      "title": "ASSET-03 C3-C6 range"
+    },
+    "tempo": {
+      "bpm": 72
+    },
+    "timeSignature": {
+      "numerator": 4,
+      "denominator": 4
+    },
+    "annotations": [],
+    "staves": [
+      {
+        "id": "a03-rh",
+        "hand": "right",
+        "measures": [
+          {
+            "id": "a03-m1",
+            "number": 1,
+            "voices": [
+              {
+                "id": "a03-rh-m1-v1",
+                "events": [
+                  {
+                    "id": "a03-rh-r1",
+                    "type": "rest",
+                    "duration": {
+                      "value": "whole"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "a03-m2",
+            "number": 2,
+            "voices": [
+              {
+                "id": "a03-rh-m2-v1",
+                "events": [
+                  {
+                    "id": "a03-rh-n1",
+                    "type": "note",
+                    "pitch": {
+                      "step": "D",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-rh-n2",
+                    "type": "note",
+                    "pitch": {
+                      "step": "E",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-rh-n3",
+                    "type": "note",
+                    "pitch": {
+                      "step": "F",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-rh-n4",
+                    "type": "note",
+                    "pitch": {
+                      "step": "G",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-rh-n5",
+                    "type": "note",
+                    "pitch": {
+                      "step": "A",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-rh-n6",
+                    "type": "note",
+                    "pitch": {
+                      "step": "B",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-rh-n7",
+                    "type": "note",
+                    "pitch": {
+                      "step": "C",
+                      "alter": 0,
+                      "octave": 5
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-rh-n8",
+                    "type": "note",
+                    "pitch": {
+                      "step": "D",
+                      "alter": 0,
+                      "octave": 5
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "a03-m3",
+            "number": 3,
+            "voices": [
+              {
+                "id": "a03-rh-m3-v1",
+                "events": [
+                  {
+                    "id": "a03-rh-n9",
+                    "type": "note",
+                    "pitch": {
+                      "step": "E",
+                      "alter": 0,
+                      "octave": 5
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-rh-n10",
+                    "type": "note",
+                    "pitch": {
+                      "step": "F",
+                      "alter": 0,
+                      "octave": 5
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-rh-n11",
+                    "type": "note",
+                    "pitch": {
+                      "step": "G",
+                      "alter": 0,
+                      "octave": 5
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-rh-n12",
+                    "type": "note",
+                    "pitch": {
+                      "step": "A",
+                      "alter": 0,
+                      "octave": 5
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-rh-n13",
+                    "type": "note",
+                    "pitch": {
+                      "step": "B",
+                      "alter": 0,
+                      "octave": 5
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-rh-n14",
+                    "type": "note",
+                    "pitch": {
+                      "step": "C",
+                      "alter": 0,
+                      "octave": 6
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-rh-r2",
+                    "type": "rest",
+                    "duration": {
+                      "value": "quarter"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "a03-m4",
+            "number": 4,
+            "voices": [
+              {
+                "id": "a03-rh-m4-v1",
+                "events": [
+                  {
+                    "id": "a03-rh-n15",
+                    "type": "note",
+                    "pitch": {
+                      "step": "C",
+                      "alter": 0,
+                      "octave": 6
+                    },
+                    "duration": {
+                      "value": "whole"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "a03-lh",
+        "hand": "left",
+        "measures": [
+          {
+            "id": "a03-m1",
+            "number": 1,
+            "voices": [
+              {
+                "id": "a03-lh-m1-v1",
+                "events": [
+                  {
+                    "id": "a03-lh-n1",
+                    "type": "note",
+                    "pitch": {
+                      "step": "C",
+                      "alter": 0,
+                      "octave": 3
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-lh-n2",
+                    "type": "note",
+                    "pitch": {
+                      "step": "D",
+                      "alter": 0,
+                      "octave": 3
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-lh-n3",
+                    "type": "note",
+                    "pitch": {
+                      "step": "E",
+                      "alter": 0,
+                      "octave": 3
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-lh-n4",
+                    "type": "note",
+                    "pitch": {
+                      "step": "F",
+                      "alter": 0,
+                      "octave": 3
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-lh-n5",
+                    "type": "note",
+                    "pitch": {
+                      "step": "G",
+                      "alter": 0,
+                      "octave": 3
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-lh-n6",
+                    "type": "note",
+                    "pitch": {
+                      "step": "A",
+                      "alter": 0,
+                      "octave": 3
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-lh-n7",
+                    "type": "note",
+                    "pitch": {
+                      "step": "B",
+                      "alter": 0,
+                      "octave": 3
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  },
+                  {
+                    "id": "a03-lh-n8",
+                    "type": "note",
+                    "pitch": {
+                      "step": "C",
+                      "alter": 0,
+                      "octave": 4
+                    },
+                    "duration": {
+                      "value": "eighth"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "a03-m2",
+            "number": 2,
+            "voices": [
+              {
+                "id": "a03-lh-m2-v1",
+                "events": [
+                  {
+                    "id": "a03-lh-r1",
+                    "type": "rest",
+                    "duration": {
+                      "value": "whole"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "a03-m3",
+            "number": 3,
+            "voices": [
+              {
+                "id": "a03-lh-m3-v1",
+                "events": [
+                  {
+                    "id": "a03-lh-r2",
+                    "type": "rest",
+                    "duration": {
+                      "value": "whole"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "a03-m4",
+            "number": 4,
+            "voices": [
+              {
+                "id": "a03-lh-m4-v1",
+                "events": [
+                  {
+                    "id": "a03-lh-n9",
+                    "type": "note",
+                    "pitch": {
+                      "step": "C",
+                      "alter": 0,
+                      "octave": 3
+                    },
+                    "duration": {
+                      "value": "whole"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

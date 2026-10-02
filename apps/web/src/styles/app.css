@@ -1,0 +1,69 @@
+/*
+ * Entry stylesheet of the web app, imported once by main.tsx: Tailwind CSS v4
+ * (@tailwindcss/vite), the shared design tokens of @sheet-music/ui and the
+ * sources Tailwind scans for class names (this app and the ScorePlayer; the
+ * ui components are added by theme.css itself). Pages are built from
+ * @sheet-music/ui components and Tailwind utilities; this file only holds the
+ * element defaults that Tailwind's preflight resets. docs/architecture/
+ * WEB_APP.md (Styling) and DESIGN_SYSTEM.md.
+ */
+@import 'tailwindcss' source(none);
+@import '@sheet-music/ui/styles/theme.css';
+
+/* apps/web/src */
+@source '..';
+@source '../../../../packages/score-ui/src';
+
+@layer base {
+  html {
+    scrollbar-gutter: stable;
+  }
+  body {
+    @apply bg-background text-base text-foreground antialiased;
+  }
+  /* The app shell (header, main, footer) fills the viewport; main grows. */
+  #root {
+    @apply flex min-h-dvh flex-col;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply leading-tight font-semibold tracking-tight text-balance;
+  }
+  h1 {
+    @apply text-xl tracking-title;
+  }
+  h2 {
+    @apply text-lg;
+  }
+  h3,
+  h4 {
+    @apply text-base;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  time {
+    @apply tabular-nums;
+  }
+  /* Every focusable element: the 2 px ring at 2 px offset (the `focus-ring` utility's look). */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/*
+ * Until main.tsx has set `.light` or `.dark` on <html> (the script may still
+ * be downloading), the tokens are the light ones: show the system's own
+ * canvas instead, so a dark system gets no white flash. #root is empty then.
+ */
+:root:not(.light, .dark) {
+  color-scheme: light dark;
+
+  & body {
+    background-color: Canvas;
+    color: CanvasText;
+  }
+}

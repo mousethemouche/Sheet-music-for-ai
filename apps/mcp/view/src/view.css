@@ -1,0 +1,53 @@
+/*
+ * Styles of the MCP Apps View (docs/architecture/MCP_VIEW.md): the score as a
+ * clean card embedded in an AI chat. Minimal chrome, no background of its own
+ * (the host's shows through), system fonts unless the host gives its own.
+ *
+ * Tailwind CSS v4 (@tailwindcss/vite) compiles this file with the shared
+ * design tokens of @sheet-music/ui (theme.css); vite-plugin-singlefile inlines
+ * the result into the one-file document. The View's components and the
+ * ScorePlayer (packages/score-ui) are styled with utilities, so both source
+ * trees are scanned below.
+ *
+ * Theme: the `.light` / `.dark` class on the document (host-bridge.ts, from
+ * the host context theme, or the system preference until the host sends one)
+ * selects the tokens and the color scheme. The shell and the player also
+ * carry the class of the theme they are given, so they always agree with the
+ * notation paper and ink.
+ */
+@import 'tailwindcss' source(none);
+@import '@sheet-music/ui/styles/theme.css';
+
+/* apps/mcp/view/src */
+@source '.';
+/* The ScorePlayer's classes. */
+@source '../../../../packages/score-ui/src';
+
+@layer base {
+  /* The host's background shows through the iframe. */
+  html,
+  body {
+    background: transparent;
+  }
+}
+
+/*
+ * Before the View's script sets the theme class, keep the system color scheme
+ * index.html asks for (theme.css pins `light` on :root): the frame's scheme
+ * must match the host's, or the browser paints an opaque backdrop.
+ */
+:root:not(.light, .dark) {
+  color-scheme: light dark;
+}
+
+/*
+ * Text drawn straight on the host's background (title, meta, credits) prefers
+ * the host's text colors (`--color-text-*`, MCP Apps host style variables set
+ * on #root), made for that background. Text on the View's own surfaces
+ * (player, notices, chips, waiting box) uses the tokens, whose contrast is
+ * checked.
+ */
+.sv {
+  --sv-on-host-text: var(--color-text-primary, var(--foreground));
+  --sv-on-host-muted: var(--color-text-secondary, var(--muted-foreground));
+}

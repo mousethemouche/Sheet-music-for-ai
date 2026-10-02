@@ -1,0 +1,14 @@
+pnpm-lock.yaml
+**/dist/
+**/coverage/
+**/test-results/
+**/playwright-report/
+supabase/.temp/
+.vitest/
+# Deliberately shaped fixture (see tools/architecture).
+tools/architecture/fixtures/
+# Accepted specifications are kept byte-for-byte as reviewed.
+docs/product/
+docs/testing/
+docs/architecture/ADR-*.md
+docs/architecture/DELIVERY_PLAN.md

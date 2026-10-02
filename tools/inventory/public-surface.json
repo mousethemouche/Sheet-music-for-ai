@@ -1,0 +1,139 @@
+{
+  "about": "Reviewed inventory of every public MCP tool, resource, prompt and HTTP route, with the executable tests covering each (CI-04, docs/testing/ACCEPTANCE.md §4). A new entry point fails CI until it is listed here with at least one integration-level test. `ids` are strings that name the covering tests inside `file` (test IDs or describe titles).",
+  "surfaces": {
+    "mcp.tools": {
+      "create_score": {
+        "tests": [
+          { "file": "tests/acceptance/flow-01-public-lifecycle.int.test.ts", "ids": ["FLOW-01"] },
+          {
+            "file": "tests/acceptance/access-01-route-ownership.int.test.ts",
+            "ids": ["ACCESS-01"]
+          },
+          {
+            "file": "apps/mcp/test/mcp-create-score.int.test.ts",
+            "ids": ["MCP-CREATE-01", "MCP-CREATE-02"]
+          },
+          { "file": "apps/mcp/test/mcp-p01-setup-discovery.int.test.ts", "ids": ["MCP-P01"] }
+        ]
+      },
+      "edit_score": {
+        "tests": [
+          { "file": "tests/acceptance/flow-01-public-lifecycle.int.test.ts", "ids": ["FLOW-01"] },
+          {
+            "file": "tests/acceptance/access-01-route-ownership.int.test.ts",
+            "ids": ["ACCESS-01"]
+          },
+          {
+            "file": "apps/mcp/test/mcp-edit-score.int.test.ts",
+            "ids": ["MCP-EDIT-01", "MCP-EDIT-02", "MCP-EDIT-03"]
+          }
+        ]
+      },
+      "save_score": {
+        "tests": [
+          { "file": "tests/acceptance/flow-01-public-lifecycle.int.test.ts", "ids": ["FLOW-01"] },
+          {
+            "file": "tests/acceptance/access-01-route-ownership.int.test.ts",
+            "ids": ["ACCESS-01"]
+          },
+          {
+            "file": "apps/mcp/test/mcp-library.int.test.ts",
+            "ids": ["MCP-LIB-01", "MCP-SAVE-02"]
+          }
+        ]
+      },
+      "get_score": {
+        "tests": [
+          { "file": "tests/acceptance/flow-01-public-lifecycle.int.test.ts", "ids": ["FLOW-01"] },
+          {
+            "file": "tests/acceptance/access-01-route-ownership.int.test.ts",
+            "ids": ["ACCESS-01"]
+          },
+          { "file": "apps/mcp/test/mcp-library.int.test.ts", "ids": ["MCP-GET-02"] }
+        ]
+      },
+      "search_scores": {
+        "tests": [
+          { "file": "tests/acceptance/flow-01-public-lifecycle.int.test.ts", "ids": ["FLOW-01"] },
+          {
+            "file": "tests/acceptance/access-01-route-ownership.int.test.ts",
+            "ids": ["ACCESS-01"]
+          },
+          { "file": "apps/mcp/test/mcp-library.int.test.ts", "ids": ["MCP-SEARCH-02"] }
+        ]
+      }
+    },
+    "mcp.resources": {
+      "ui://sheet-music/score-view": {
+        "tests": [
+          { "file": "apps/mcp/test/mcp-p01-setup-discovery.int.test.ts", "ids": ["MCP-P01"] }
+        ]
+      }
+    },
+    "mcp.resourceTemplates": {},
+    "mcp.prompts": {},
+    "mcp.http": {
+      "GET /.well-known/oauth-protected-resource/mcp": {
+        "tests": [{ "file": "apps/mcp/test/oauth-02-mcp-auth.int.test.ts", "ids": ["OAUTH-02"] }]
+      },
+      "ALL /mcp": {
+        "tests": [
+          { "file": "apps/mcp/test/oauth-02-mcp-auth.int.test.ts", "ids": ["OAUTH-02"] },
+          { "file": "apps/mcp/test/sec-02-request-protection.int.test.ts", "ids": ["SEC-02"] },
+          { "file": "apps/mcp/test/sec-03-rate-limit.int.test.ts", "ids": ["SEC-03"] },
+          { "file": "apps/mcp/test/mcp-p02-boundary-failures.int.test.ts", "ids": ["MCP-P02"] }
+        ]
+      },
+      "POST /mcp": {
+        "tests": [
+          { "file": "tests/acceptance/flow-01-public-lifecycle.int.test.ts", "ids": ["FLOW-01"] },
+          { "file": "apps/mcp/test/mcp-p01-setup-discovery.int.test.ts", "ids": ["MCP-P01"] },
+          { "file": "apps/mcp/test/mcp-p02-boundary-failures.int.test.ts", "ids": ["MCP-P02"] },
+          { "file": "apps/mcp/test/err-i01-dependency-failure.int.test.ts", "ids": ["ERR-I01"] }
+        ]
+      },
+      "GET /assets/*": {
+        "mount": "/assets",
+        "tests": [
+          { "file": "apps/mcp/src/static-assets.int.test.ts", "ids": ["View assets route"] }
+        ]
+      }
+    },
+    "api.http": {
+      "GET /health": {
+        "tests": [{ "file": "apps/api/test/http-routes.int.test.ts", "ids": ["HTTP-SYS-01"] }]
+      },
+      "GET /version": {
+        "tests": [{ "file": "apps/api/test/http-routes.int.test.ts", "ids": ["HTTP-SYS-01"] }]
+      },
+      "GET /scores": {
+        "tests": [
+          { "file": "tests/acceptance/flow-01-public-lifecycle.int.test.ts", "ids": ["FLOW-01"] },
+          {
+            "file": "tests/acceptance/access-01-route-ownership.int.test.ts",
+            "ids": ["ACCESS-01"]
+          },
+          { "file": "apps/api/test/http-routes.int.test.ts", "ids": ["HTTP-LIST-01"] },
+          { "file": "apps/api/test/oauth-02-api-auth.int.test.ts", "ids": ["OAUTH-02"] },
+          {
+            "file": "apps/api/test/sec-02-sec-03-api-protection.int.test.ts",
+            "ids": ["SEC-02", "SEC-03"]
+          },
+          { "file": "apps/api/test/err-i01-dependency-failure.int.test.ts", "ids": ["ERR-I01"] }
+        ]
+      },
+      "GET /scores/:id": {
+        "tests": [
+          { "file": "tests/acceptance/flow-01-public-lifecycle.int.test.ts", "ids": ["FLOW-01"] },
+          {
+            "file": "tests/acceptance/access-01-route-ownership.int.test.ts",
+            "ids": ["ACCESS-01"]
+          },
+          { "file": "apps/api/test/http-routes.int.test.ts", "ids": ["HTTP-GET-01"] },
+          { "file": "apps/api/test/oauth-02-api-auth.int.test.ts", "ids": ["OAUTH-02"] },
+          { "file": "apps/api/test/err-i01-dependency-failure.int.test.ts", "ids": ["ERR-I01"] }
+        ]
+      }
+    }
+  }
+}

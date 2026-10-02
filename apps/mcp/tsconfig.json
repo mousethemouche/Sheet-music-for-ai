@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    // The pinned MCP SDK types are not exactOptionalPropertyTypes-clean
+    // (StreamableHTTPServerTransport is not assignable to its own Transport).
+    "exactOptionalPropertyTypes": false
+  },
+  "include": ["src", "test", "api"],
+  // Browser-side test code has its own program with the DOM library.
+  "exclude": ["test/mcp-ui"]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@sheet-music/score-ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@sheet-music/music-domain": "workspace:*",
+    "@sheet-music/playback-core": "workspace:*",
+    "@sheet-music/renderer-core": "workspace:*",
+    "@sheet-music/ui": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@sheet-music/test-fixtures": "workspace:*",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:"
+  }
+}

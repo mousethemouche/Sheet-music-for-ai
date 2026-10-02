@@ -1,0 +1,20 @@
+{
+  "name": "@sheet-music/music-application",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@sheet-music/music-contracts": "workspace:*",
+    "@sheet-music/music-domain": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@sheet-music/test-fixtures": "workspace:*"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  // The MCP-UI suite: a browser side (host page, View probe) and a Node side
+  // (harness server, sandbox proxy). Its own program, so the DOM library never
+  // applies to the server code of ../../src (apps/mcp/tsconfig.json).
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": ["."],
+  "exclude": []
+}

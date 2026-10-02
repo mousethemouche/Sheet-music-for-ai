@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+# The architecture rule fixture ships tiny stub packages on purpose.
+!tools/architecture/fixtures/**/node_modules/
+
+# Build and test output
+dist/
+# ...except inside those stub packages (an entry point under dist/ is part of the proof).
+!tools/architecture/fixtures/**/node_modules/**/dist/
+coverage/
+*.tsbuildinfo
+.vite/
+.vitest/
+.vitest-attachments/
+__screenshots__/
+test-results/
+playwright-report/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/
+
+# OS / editor
+.DS_Store
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json
