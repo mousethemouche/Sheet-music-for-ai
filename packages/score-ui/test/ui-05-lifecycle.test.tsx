@@ -1,13 +1,14 @@
 /**
  * UI-05 lifecycle and host context (#7): resizing, including a hidden width
  * of 0, and host theme changes keep the score, its revision and playback;
+ * a notation even 23 px wider than its viewport gets the sideways fade;
  * the controls sit where the host asks (controlsPosition);
  * StrictMode double mounting, unmounting and late port results leave exactly
  * one live renderer/engine while mounted, and no listener, audio or update
  * after unmount.
  */
 import { F09 } from '@sheet-music/test-fixtures';
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { PALETTES } from '../src/theme';
 import { artifactOf, installTextMetrics, mountPlayer, settle, ui } from './harness';
@@ -95,6 +96,36 @@ describe('UI-05 host context', () => {
     expect(label.querySelector('[aria-hidden="true"]')).toHaveStyle({ backgroundColor: '#ff69b4' });
     expect(engine.loads.map((plan) => plan.revision)).toEqual([1]);
     expect(ui.status()).toHaveTextContent('Ready');
+  });
+
+  // The ChatGPT drafts at a 360 px frame: a 367 px engraving in a 344 px
+  // viewport hides 23 px; the fade must still mark the hidden side.
+  test('notation only 23 px wider than its viewport shows the fade on the hidden side', async () => {
+    await mountPlayer(artifactOf(F09), { width: 344 });
+    const viewport = ui.notation().parentElement as HTMLElement;
+    const sheet = viewport.parentElement as HTMLElement;
+    let scrollLeft = 0;
+    Object.defineProperties(viewport, {
+      clientWidth: { configurable: true, get: () => 344 },
+      scrollWidth: { configurable: true, get: () => 367 },
+      scrollLeft: { configurable: true, get: () => scrollLeft },
+    });
+
+    fireEvent.scroll(viewport);
+    expect(sheet).toHaveAttribute('data-overflow-end');
+    expect(sheet).not.toHaveAttribute('data-overflow-start');
+
+    scrollLeft = 23;
+    fireEvent.scroll(viewport);
+    expect(sheet).toHaveAttribute('data-overflow-start');
+    expect(sheet).not.toHaveAttribute('data-overflow-end');
+
+    // A 1 px rounding difference is not an overflow.
+    Object.defineProperty(viewport, 'scrollWidth', { configurable: true, get: () => 345 });
+    scrollLeft = 0;
+    fireEvent.scroll(viewport);
+    expect(sheet).not.toHaveAttribute('data-overflow-start');
+    expect(sheet).not.toHaveAttribute('data-overflow-end');
   });
 });
 

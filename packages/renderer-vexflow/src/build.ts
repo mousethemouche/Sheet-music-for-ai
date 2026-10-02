@@ -43,7 +43,7 @@ import {
   TextNote,
   Tuplet,
   Voice,
-} from 'vexflow/bravura';
+} from 'vexflow/core';
 import {
   type BeamCandidate,
   type SpelledEvent,

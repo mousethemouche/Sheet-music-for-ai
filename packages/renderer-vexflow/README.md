@@ -12,27 +12,36 @@ import { createVexFlowRendererFactory } from '@sheet-music/renderer-vexflow';
 const rendererFactory = createVexFlowRendererFactory();
 ```
 
-## Fonts, offline
+## Fonts, offline, whatever the host's CSP
 
 VexFlow 5 draws every music glyph as SMuFL text and measures it with a canvas
 (`measureText`), so layout is only right once the real fonts are loaded.
 
-- The adapter imports the `vexflow/bravura` entry point. That build embeds
-  Bravura (music) and Academico (text, regular and bold) as base64 WOFF2
-  `data:` URLs and registers them with the CSS Font Loading API at import
-  time. Nothing is fetched: VexFlow only falls back to its jsDelivr
-  `Font.HOST_URL` when a font is loaded by name without a URL, which this
-  adapter never does. The larger `vexflow` entry (Petaluma, Gonville...) is
-  not used.
-- `loadBundledFonts()` (the default `loadFonts`) awaits
+- The adapter ships Bravura 1.392 (music) and Academico 0.902 (text, regular
+  and bold) in `src/font-data/`: byte for byte the WOFF2 files VexFlow 5.0.0
+  embeds, as base64 TypeScript constants written by
+  `scripts/vendor-fonts.mjs`, with their SIL OFL 1.1 notices
+  (`Bravura-OFL.txt`, `Academico-OFL.txt`, the license text each font states
+  in its own `name` table, which travels with the bytes into every bundle).
+  REN-05 fails when the installed VexFlow ships other bytes: after a VexFlow
+  upgrade, run the script again (then prettier) so the fonts match VexFlow's
+  metrics.
+- `loadBundledFonts()` (the default `loadFonts`) registers the three faces
+  once per document from their bytes (`new FontFace(family, ArrayBuffer)`,
+  with the descriptors VexFlow's own entry uses), then awaits
   `document.fonts.load()` for `30pt Bravura`, `12pt Academico` and
   `bold 12pt Academico`. `render`, `update` and `resize` call it before
-  engraving; a missing Font Loading API, an unregistered face or a face that
-  fails to load rejects with `RENDER_FAILED`.
-- **CSP:** `data:` font sources are subject to `font-src`. The page that
-  hosts the renderer (the MCP View iframe, the web app) must allow
-  `font-src data:`; otherwise every render fails with `RENDER_FAILED`
-  (checked by MCP-UI-01, #11, and the deploy headers, #16).
+  engraving; a missing Font Loading API, a face that fails to load or an
+  unregistered face rejects with `RENDER_FAILED`.
+- **No CSP requirement.** A face built from bytes is fetched from nowhere:
+  neither `font-src` nor `connect-src` applies, and no CDN is involved. The
+  adapter imports `vexflow/core` only, and sets VexFlow's font stack to
+  `Bravura,Academico` itself. It never imports `vexflow/bravura`, whose
+  import registers the same fonts as `url(data:...)` sources: under a
+  `font-src` without `data:` (ChatGPT's widget sandbox) those faces fail, an
+  errored face makes `document.fonts.load` reject for its whole family, and
+  every render failed with `RENDER_FAILED` ("The notation could not be
+  drawn."; REN-I03, REN-04).
 - An app that must serve the fonts itself registers `Bravura` and
   `Academico` (regular and bold) `FontFace`s in the document and passes
   `createVexFlowRendererFactory({ loadFonts })`, where `loadFonts` resolves
@@ -201,16 +210,23 @@ groups, `data-harmony-id`, `data-scale-degree-id`, `data-dynamic-id`,
   octave) for the bar.
 - A voice moved aside (three or four voices starting together) keeps its
   articulations centered on its unmoved position, as VexFlow draws them.
+- Labels are drawn in Academico, which has `♭ ♯ ♮ ° ø` but no `Δ` (U+0394).
+  A chord symbol's `display` text with a character Academico lacks (`CΔ7`)
+  takes that glyph from a font of the host page, so its width, and the room
+  measured for it, depend on the host.
 
 ## Tests
 
-| Group   | File                                    | Project | Environment                                |
-| ------- | --------------------------------------- | ------- | ------------------------------------------ |
-| REN-01  | `test/ren-01-semantic-mapping.test.ts`  | unit    | jsdom (stubbed text metrics and `getBBox`) |
-| REN-02  | `test/ren-02-identity.test.ts`          | unit    | jsdom (stubbed text metrics and `getBBox`) |
-| REN-03  | `test/ren-03-lifecycle.test.ts`         | unit    | jsdom (stubbed text metrics and `getBBox`) |
-| REN-I01 | `test/ren-i01-vexflow.mcpui.test.ts`    | mcp-ui  | headless Chromium, real fonts and geometry |
-| REN-I02 | `test/ren-i02-label-rows.mcpui.test.ts` | mcp-ui  | headless Chromium, real fonts and geometry |
+| Group   | File                                         | Project | Environment                                |
+| ------- | -------------------------------------------- | ------- | ------------------------------------------ |
+| REN-01  | `test/ren-01-semantic-mapping.test.ts`       | unit    | jsdom (stubbed text metrics and `getBBox`) |
+| REN-02  | `test/ren-02-identity.test.ts`               | unit    | jsdom (stubbed text metrics and `getBBox`) |
+| REN-03  | `test/ren-03-lifecycle.test.ts`              | unit    | jsdom (stubbed text metrics and `getBBox`) |
+| REN-04  | `test/ren-04-font-loading.test.ts`           | unit    | jsdom, Font Loading API of the sandbox     |
+| REN-05  | `test/ren-05-vendored-fonts.test.ts`         | unit    | jsdom, VexFlow's own font registration     |
+| REN-I01 | `test/ren-i01-vexflow.mcpui.test.ts`         | mcp-ui  | headless Chromium, real fonts and geometry |
+| REN-I02 | `test/ren-i02-label-rows.mcpui.test.ts`      | mcp-ui  | headless Chromium, real fonts and geometry |
+| REN-I03 | `test/ren-i03-chatgpt-sandbox.mcpui.test.ts` | mcp-ui  | headless Chromium, ChatGPT's widget CSP    |
 
 jsdom has no canvas text metrics or SVG geometry, so REN-01..03 run the real
 VexFlow objects and drawing with deterministic stub metrics: they check
@@ -226,3 +242,23 @@ fingerings), and no label and a staff line, bar line or notehead of its own or
 a neighbouring system, come within 2 px, and every label lies inside its
 system's LayoutMap bounds; hand-picked fingerings of shared staves on or
 beyond an outer line clear every staff and ledger line.
+
+The label-spacing geometry (labels, staff and bar lines, noteheads as drawn,
+and the checks) is `test/label-geometry.ts`, shared by REN-I02 and REN-I03.
+REN-I03 loads the adapter module into a frame set up as ChatGPT sets up a
+widget (sandboxed about:blank iframe written with `document.write`, the CSP of
+ChatGPT's sandbox first in its head: `font-src` without `data:`) and engraves
+the three scores ChatGPT created in production on 2026-10-02 (test-fixtures
+`CHATGPT_STELLA_*`) and five shapes derived from them (whole-note clusters of
+seconds, low shells, comping in quarters with rests, double flats and sharps,
+16 bars of chord symbols), plus four adversarial charts of the post-fix
+review (flats and naturals against a D major signature, Cb/Fb/E#/B# and
+double accidentals in Gb, 16 bars with a symbol every two beats, structured
+symbols with alterations and slash bass in 3/4), at 720 and 320 px: no
+`RENDER_FAILED` and no CSP violation, one LayoutMap entry per written note,
+every chord symbol drawn, and the REN-I02 checks. REN-04 emulates the sandbox's Font Loading API in jsdom (a
+`url(...)` source fails with a NetworkError and spoils its family; WOFF2 bytes
+load): the fonts are registered from bytes, once per document, and the drafts
+engrave with the default `loadFonts`. Both failed on the adapter that imported
+`vexflow/bravura`, with the production error ("Engraving failed: A network
+error occurred.").

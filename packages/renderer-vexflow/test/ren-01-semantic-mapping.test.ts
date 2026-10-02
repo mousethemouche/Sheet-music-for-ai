@@ -44,7 +44,7 @@ import {
   PedalMarking,
   type StaveNote,
   VexFlow,
-} from 'vexflow/bravura';
+} from 'vexflow/core';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   OPTIONS,

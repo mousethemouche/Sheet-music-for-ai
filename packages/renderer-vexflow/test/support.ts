@@ -11,7 +11,7 @@
 import type { ScoreSpec, ScoreSpecInput } from '@sheet-music/music-domain';
 import type { RenderOptions, ScoreRenderer } from '@sheet-music/renderer-core';
 import { parseFixture } from '@sheet-music/test-fixtures';
-import { Element as VexElement, Stave } from 'vexflow/bravura';
+import { Element as VexElement, Stave } from 'vexflow/core';
 import { type BarGlyphs, type EventGlyph, buildBar, prepareScore } from '../src/build';
 import { createVexFlowRendererFactory } from '../src';
 

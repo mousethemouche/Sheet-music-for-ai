@@ -46,7 +46,7 @@ import {
   StaveModifierPosition,
   type StaveNote,
   StaveTie,
-} from 'vexflow/bravura';
+} from 'vexflow/core';
 import {
   type BarGlyphs,
   type EventGlyph,
