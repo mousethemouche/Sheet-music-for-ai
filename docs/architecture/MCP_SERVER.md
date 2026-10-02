@@ -44,7 +44,8 @@ error codes) remain the references. Pinned versions:
   protocol 2025-06-18, and the pinned SDK transport would still run up to 100
   batched messages of one request, each a tool call that the per-owner rate
   limit counted once. JSON that is not a JSON-RPC message is the SDK's 400
-  `-32700`, a wrong `Accept` its 406. The process never crashes on a body.
+  `-32700`, an `MCP-Protocol-Version` header it does not support its 400
+  `-32000`, a wrong `Accept` its 406. The process never crashes on a body.
 - **Other methods.** `GET` (standalone SSE stream) and `DELETE` (session end)
   have no meaning without sessions. Every method but POST, `OPTIONS` included,
   is `405` with `Allow: POST` and a JSON-RPC error body, once request
@@ -100,6 +101,20 @@ error codes) remain the references. Pinned versions:
   `no-store` and `nosniff` (`sendError(internalError(...))`), logged as
   `http.unhandled_error`; the thrown value is never sent. Every POST that
   reaches the transport is logged at debug level (`mcp.request`).
+- **400 answers** are logged once each (`mcp.bad_request`, warn, with the
+  correlation ID): a `reason` (`parse_error`, `empty_body`, `batch` refused
+  by `readJsonRpcMessage`; `invalid_jsonrpc`, `unsupported_protocol_version`
+  or `transport_error`, classified from what the SDK transport reported to
+  its `onerror`, whose message is not logged), the JSON-RPC `rpcMethod` and
+  the `protocolVersion` header, each only when present and of the expected
+  shape (`other` otherwise: a method of 1-64 characters among `A-Z a-z 0-9 _
+/ . -`, a `YYYY-MM-DD` version). Never the body, the params or another
+  header. ChatGPT's calls succeeded on 2026-10-02 with 400s in between; the
+  likely source is a client of MCP 2026-07-28 (stateless) probing with
+  `MCP-Protocol-Version: 2026-07-28`, which SDK 1.30.1 (versions up to
+  2025-11-25) answers 400 before the client falls back to `initialize`. The
+  log line confirms or refutes it; an SDK that speaks 2026-07-28 removes the
+  probes.
 - No other route: there is no separate health endpoint. An MCP `ping`, which
   touches no store, checks that the server answers; the API's `/health` (#21)
   covers the shared dependencies.
@@ -247,6 +262,21 @@ listing and on the read content) is:
   empty when none is configured, which is the spec's no-network default;
 - `prefersBorder: true`.
 
+Next to it, `_meta['openai/widgetCSP']` (ChatGPT's Apps SDK key) declares
+the same origin: `connect_domains`, `resource_domains`, and
+`redirect_domains` (the View opens the SoundFont license on the asset origin
+with `openLink`). It is a defensive addition, not something ChatGPT is known
+to require: ChatGPT documents `_meta.ui.csp`, and the sandbox code captured
+on 2026-10-02 builds its policy from the MCP Apps names (`resourceDomains`,
+`connectDomains`, ...), with no trace of this key; only its parent-side
+mapping, not captured, could read it. Keep it until a check in ChatGPT
+itself shows whether it changes anything. Other hosts ignore it (MCP-P01
+checks `_meta.ui` is unchanged beside it). Still missing for a
+ChatGPT submission: a dedicated widget domain, `openai/widgetDomain` (not
+`ui.domain`, whose format is host-specific), to set and check on both hosts.
+What ChatGPT's sandbox does with the policy, and why the View needs no font
+directive, is MCP_VIEW.md §4.
+
 The asset origin is the origin of `MCP_PUBLIC_URL`: the server serves the
 View's playback assets itself at `/assets/` (`static-assets.ts`). It must be
 https (http only on a loopback host). The document and its metadata are
@@ -304,21 +334,21 @@ needs the same variables.
 
 ## 8. Tests
 
-| Test                                   | File                                                                        | Covers                                                                                                                                                                                                                                                |
-| -------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MCP-P01                                | `apps/mcp/test/mcp-p01-setup-discovery.int.test.ts`                         | initialize at the latest protocol version, ping, the reviewed manifest (§3), resources/list and read of the built View with this server's origin in its CSP                                                                                           |
-| MCP-P02                                | `apps/mcp/test/mcp-p02-boundary-failures.int.test.ts`                       | parse errors, 405 methods (with a valid token), unknown method/resource/tool, closed input as `INVALID_INPUT`, no write, next call succeeds                                                                                                           |
-| MCP HTTP last resort (ERR-01 wiring)   | `apps/mcp/src/app.test.ts`                                                  | a throwing or rejecting handler of the `/mcp` chain: correlated 500 `INTERNAL` envelope, `no-store`, `nosniff`, one correlated log line, thrown text never sent                                                                                       |
-| View resource (unit)                   | `apps/mcp/src/view-resource.test.ts`                                        | origin injection, CSP metadata prepared once, a build without the placeholder fails `createMcpApp` at startup                                                                                                                                         |
-| MCP-CREATE-01/02                       | `apps/mcp/test/mcp-create-score.int.test.ts`                                | #12: rich create returns the declared draft artifact, re-read, one draft of the token subject and no saved row; malformed envelope, 33 bars and P-03 conflict are actionable tool errors with no row                                                  |
-| MCP-EDIT-01/02/03                      | `apps/mcp/test/mcp-edit-score.int.test.ts`                                  | #13: mixed batch (meter, bar replacement, fingering) keeps ID, revision +1, TTL renewed, persisted; stale replay is `REVISION_CONFLICT` with no second transposition; failed batches change nothing; repair batch passes                              |
-| MCP-LIB-01, SAVE-02, GET-02, SEARCH-02 | `apps/mcp/test/mcp-library.int.test.ts`                                     | #14: save/reopen/search successes; invalid metadata, consent flag, stale and expired saves promote nothing; replay rule; missing/expired/unreadable/malformed reads; reads renew no TTL; query+tags+pages, empty, bad pagination                      |
-| OAUTH-02 (MCP wire)                    | `apps/mcp/test/oauth-02-mcp-auth.int.test.ts`                               | #26: 401 + `resource_metadata` challenge, public metadata (resource, issuer), valid token reaches tools, expired / other-resource / session / query-string tokens refused, every method guarded, JWKS outage 503, audience modes                      |
-| SEC-02                                 | `apps/mcp/test/sec-02-request-protection.int.test.ts`                       | #24 on this app: forbidden/`null` Origin 403 on POST, GET, DELETE, OPTIONS before auth; allowed preflight 204; allowed and no-Origin POST served with private-answer headers; 413/411 before any MCP work; no write                                   |
-| SEC-03 (wire)                          | `apps/mcp/test/sec-03-rate-limit.int.test.ts`                               | #24: per-owner 429 with `Retry-After`, no tool run and no write; independent owner quota; reset at the next window; a batch of more calls than the limit is 400 `-32600`, one counted request, no write; per-IP limit counts unauthenticated requests |
-| ERR-I01                                | `apps/mcp/test/err-i01-dependency-failure.int.test.ts`                      | #19 on this app: the score stores on a missing database; `DEPENDENCY_UNAVAILABLE` tool error with the header's correlation ID, one correlated error log line, no password anywhere                                                                    |
-| MCP-CONFIG-01 (unit)                   | `apps/mcp/test/mcp-config-01.test.ts`                                       | configuration: canonical resource and defaults; missing/invalid variables reported by name without values; no audience fallback                                                                                                                       |
-| MCP-U01                                | `apps/mcp/view/test/mcp-u01-view-payload.test.ts`, `...score-view.test.tsx` | parser acceptance/rejection, stale/duplicate/other-score results, notices, mount only after validation                                                                                                                                                |
+| Test                                   | File                                                                        | Covers                                                                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| MCP-P01                                | `apps/mcp/test/mcp-p01-setup-discovery.int.test.ts`                         | initialize at the latest protocol version, ping, the reviewed manifest (§3), resources/list and read of the built View with this server's origin in its CSP (`ui.csp`, `openai/widgetCSP`)                                                                                                                                                                                                                         |
+| MCP-P02                                | `apps/mcp/test/mcp-p02-boundary-failures.int.test.ts`                       | parse errors, 405 methods (with a valid token), unknown method/resource/tool, closed input as `INVALID_INPUT`, no write, next call succeeds                                                                                                                                                                                                                                                                        |
+| MCP HTTP last resort (ERR-01 wiring)   | `apps/mcp/src/app.test.ts`                                                  | a throwing or rejecting handler of the `/mcp` chain: correlated 500 `INTERNAL` envelope, `no-store`, `nosniff`, one correlated log line, thrown text never sent; every 400 (malformed JSON, no body, batch, not JSON-RPC, unsupported protocol version) is one correlated `mcp.bad_request` with its reason and sanitized method and version, never params or the Authorization header; a served request logs none |
+| View resource (unit)                   | `apps/mcp/src/view-resource.test.ts`                                        | origin injection, CSP metadata (`ui.csp`, `openai/widgetCSP`) prepared once, a build without the placeholder fails `createMcpApp` at startup                                                                                                                                                                                                                                                                       |
+| MCP-CREATE-01/02                       | `apps/mcp/test/mcp-create-score.int.test.ts`                                | #12: rich create returns the declared draft artifact, re-read, one draft of the token subject and no saved row; malformed envelope, 33 bars and P-03 conflict are actionable tool errors with no row                                                                                                                                                                                                               |
+| MCP-EDIT-01/02/03                      | `apps/mcp/test/mcp-edit-score.int.test.ts`                                  | #13: mixed batch (meter, bar replacement, fingering) keeps ID, revision +1, TTL renewed, persisted; stale replay is `REVISION_CONFLICT` with no second transposition; failed batches change nothing; repair batch passes                                                                                                                                                                                           |
+| MCP-LIB-01, SAVE-02, GET-02, SEARCH-02 | `apps/mcp/test/mcp-library.int.test.ts`                                     | #14: save/reopen/search successes; invalid metadata, consent flag, stale and expired saves promote nothing; replay rule; missing/expired/unreadable/malformed reads; reads renew no TTL; query+tags+pages, empty, bad pagination                                                                                                                                                                                   |
+| OAUTH-02 (MCP wire)                    | `apps/mcp/test/oauth-02-mcp-auth.int.test.ts`                               | #26: 401 + `resource_metadata` challenge, public metadata (resource, issuer), valid token reaches tools, expired / other-resource / session / query-string tokens refused, every method guarded, JWKS outage 503, audience modes                                                                                                                                                                                   |
+| SEC-02                                 | `apps/mcp/test/sec-02-request-protection.int.test.ts`                       | #24 on this app: forbidden/`null` Origin 403 on POST, GET, DELETE, OPTIONS before auth; allowed preflight 204; allowed and no-Origin POST served with private-answer headers; 413/411 before any MCP work; no write                                                                                                                                                                                                |
+| SEC-03 (wire)                          | `apps/mcp/test/sec-03-rate-limit.int.test.ts`                               | #24: per-owner 429 with `Retry-After`, no tool run and no write; independent owner quota; reset at the next window; a batch of more calls than the limit is 400 `-32600`, one counted request, no write; per-IP limit counts unauthenticated requests                                                                                                                                                              |
+| ERR-I01                                | `apps/mcp/test/err-i01-dependency-failure.int.test.ts`                      | #19 on this app: the score stores on a missing database; `DEPENDENCY_UNAVAILABLE` tool error with the header's correlation ID, one correlated error log line, no password anywhere                                                                                                                                                                                                                                 |
+| MCP-CONFIG-01 (unit)                   | `apps/mcp/test/mcp-config-01.test.ts`                                       | configuration: canonical resource and defaults; missing/invalid variables reported by name without values; no audience fallback                                                                                                                                                                                                                                                                                    |
+| MCP-U01                                | `apps/mcp/view/test/mcp-u01-view-payload.test.ts`, `...score-view.test.tsx` | parser acceptance/rejection, stale/duplicate/other-score results, notices, mount only after validation                                                                                                                                                                                                                                                                                                             |
 
 Every integration file boots the production composition (`createMcpApp`)
 through `apps/mcp/test/support/mcp-harness.ts` (`startMcpApp`): real request

@@ -44,7 +44,10 @@ export interface McpHttpAppOptions {
    * PAYLOAD_LIMITS.requestBodyBytes); a larger body is answered 413 before parsing.
    */
   readonly maxRequestBodyBytes?: number;
-  /** Receives `mcp.request` (debug) for every POST that reaches the transport, and unexpected errors. */
+  /**
+   * Receives `mcp.request` (debug) for every POST that reaches the transport,
+   * `mcp.bad_request` (warn) for every POST answered 400, and unexpected errors.
+   */
   readonly logger?: Logger;
 }
 
@@ -66,6 +69,60 @@ const privateAnswer: RequestHandler = (_req, res, next) => {
 };
 
 const UNSUPPORTED_MEDIA_TYPE = 'Unsupported Media Type: Content-Type must be application/json';
+
+/**
+ * Why a POST was answered 400: what `readJsonRpcMessage` refused, or what the
+ * SDK transport reported to its `onerror` before answering 400 (a value that
+ * is not a JSON-RPC message, an `MCP-Protocol-Version` it does not support).
+ */
+type BadRequestReason =
+  | 'parse_error'
+  | 'empty_body'
+  | 'batch'
+  | 'invalid_jsonrpc'
+  | 'unsupported_protocol_version'
+  | 'transport_error';
+
+/** Classifies a transport error by the SDK's message, which is never logged itself. */
+function transportReason(error: Error): BadRequestReason {
+  if (error.message.includes('Unsupported protocol version')) {
+    return 'unsupported_protocol_version';
+  }
+  if (error.message.includes('Invalid JSON-RPC message')) {
+    return 'invalid_jsonrpc';
+  }
+  return error.message.includes('Parse error') ? 'parse_error' : 'transport_error';
+}
+
+const RPC_METHOD = /^[A-Za-z0-9_/.-]{1,64}$/;
+const PROTOCOL_VERSION = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Logs a 400 answer (`mcp.bad_request`, warn) with what is safe to know: the
+ * reason, the JSON-RPC `method` and the `MCP-Protocol-Version` header, each
+ * kept only when it has the expected shape (`other` otherwise, absent when
+ * the request has none). Never the body, the params or another header.
+ */
+function logBadRequest(logger: Logger | undefined, req: Request, reason: BadRequestReason): void {
+  const body: unknown = req.body;
+  const method =
+    typeof body === 'object' && body !== null && !Array.isArray(body)
+      ? (body as { readonly method?: unknown }).method
+      : undefined;
+  const version = req.headers['mcp-protocol-version'];
+  logger?.warn('mcp.bad_request', {
+    reason,
+    ...(method === undefined
+      ? {}
+      : { rpcMethod: typeof method === 'string' && RPC_METHOD.test(method) ? method : 'other' }),
+    ...(version === undefined
+      ? {}
+      : {
+          protocolVersion:
+            typeof version === 'string' && PROTOCOL_VERSION.test(version) ? version : 'other',
+        }),
+  });
+}
 
 /** HTTP status of a body-parser failure (`http-errors`), or undefined for anything else. */
 function bodyErrorStatus(error: unknown): number | undefined {
@@ -90,7 +147,7 @@ function bodyErrorStatus(error: unknown): number | undefined {
  * The body cap of the protection slot already refused a declared body over
  * the limit; the parser enforces the same limit on what it reads.
  */
-function readJsonRpcMessage(maxBytes: number): RequestHandler {
+function readJsonRpcMessage(maxBytes: number, logger: Logger | undefined): RequestHandler {
   const parse = express.json({ limit: maxBytes, strict: false, inflate: false, type: () => true });
   return (req, res, next) => {
     if (!isJsonContentType(req.headers['content-type'])) {
@@ -105,6 +162,7 @@ function readJsonRpcMessage(maxBytes: number): RequestHandler {
         } else if (status === 415) {
           jsonRpcError(res, 415, -32000, UNSUPPORTED_MEDIA_TYPE);
         } else if (status === 400) {
+          logBadRequest(logger, req, 'parse_error');
           jsonRpcError(res, 400, -32700, 'Parse error: Invalid JSON');
         } else {
           next(error);
@@ -113,8 +171,10 @@ function readJsonRpcMessage(maxBytes: number): RequestHandler {
       }
       const body: unknown = req.body;
       if (body === undefined) {
+        logBadRequest(logger, req, 'empty_body');
         jsonRpcError(res, 400, -32700, 'Parse error: Invalid JSON');
       } else if (Array.isArray(body)) {
+        logBadRequest(logger, req, 'batch');
         jsonRpcError(res, 400, -32600, 'Invalid Request: JSON-RPC batches are not supported.');
       } else {
         next();
@@ -126,7 +186,9 @@ function readJsonRpcMessage(maxBytes: number): RequestHandler {
 /**
  * One server/transport pair per POST, closed when the response ends. The
  * transport gets the one message `readJsonRpcMessage` parsed; a JSON value
- * that is not a JSON-RPC message is its 400 parse error (-32700).
+ * that is not a JSON-RPC message is its 400 parse error (-32700), an
+ * unsupported `MCP-Protocol-Version` its 400 (-32000), both logged with the
+ * reason its `onerror` reported.
  */
 function handleMcpPost(options: McpHttpAppOptions): RequestHandler {
   const maxRequestBodySize = options.maxRequestBodyBytes ?? PAYLOAD_LIMITS.requestBodyBytes;
@@ -142,8 +204,16 @@ function handleMcpPost(options: McpHttpAppOptions): RequestHandler {
       void transport.close();
       void server.close();
     });
+    let transportError: BadRequestReason | undefined;
+    // Set before connect, which chains the handler already in place.
+    transport.onerror = (error) => {
+      transportError = transportReason(error);
+    };
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
+    if (res.statusCode === 400) {
+      logBadRequest(options.logger, req, transportError ?? 'transport_error');
+    }
   };
 }
 
@@ -191,7 +261,10 @@ export function createMcpHttpApp(options: McpHttpAppOptions): Express {
   app.all(MCP_PATH, privateAnswer);
   app.post(
     MCP_PATH,
-    readJsonRpcMessage(options.maxRequestBodyBytes ?? PAYLOAD_LIMITS.requestBodyBytes),
+    readJsonRpcMessage(
+      options.maxRequestBodyBytes ?? PAYLOAD_LIMITS.requestBodyBytes,
+      options.logger,
+    ),
     handleMcpPost(options),
   );
   app.all(MCP_PATH, methodNotAllowed);

@@ -8,7 +8,7 @@
  * mapping table itself is ERR-01 (server-common); this is the app's wiring.
  */
 import { type Server, createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { type AddressInfo, connect } from 'node:net';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { errorEnvelopeSchema } from '@sheet-music/music-contracts';
 import { correlationMiddleware, createLogger } from '@sheet-music/server-common';
@@ -97,5 +97,162 @@ describe('MCP HTTP app: unexpected failure in the /mcp chain', () => {
     const logged = logs.filter((line) => line['event'] === 'http.unhandled_error');
     expect(logged).toHaveLength(1);
     expect(logged[0]).toMatchObject({ level: 'error', correlationId });
+  });
+});
+
+/**
+ * Every POST answered 400 is one `mcp.bad_request` warning (MCP_SERVER.md §1),
+ * correlated, with the classified reason and, when they have the expected
+ * shape, the JSON-RPC method and the `MCP-Protocol-Version` header: enough to
+ * tell a host's protocol probe from a broken client, and never the body, the
+ * params or a credential.
+ */
+describe('MCP HTTP app: 400 answers are logged without request content', () => {
+  const SECRET_PARAM = 'param-secret-kid';
+  const SECRET_BEARER = 'bearer-secret-value';
+
+  async function post(
+    body: string,
+    headers: Record<string, string> = {},
+  ): Promise<{ status: number; correlationId: string | null; logs: Record<string, unknown>[] }> {
+    const { url, logs } = await start((_req, _res, next) => next());
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        ...headers,
+      },
+      body,
+    });
+    await response.text();
+    return {
+      status: response.status,
+      correlationId: response.headers.get('x-correlation-id'),
+      logs,
+    };
+  }
+
+  const badRequests = (logs: Record<string, unknown>[]): Record<string, unknown>[] =>
+    logs.filter((line) => line['event'] === 'mcp.bad_request');
+
+  it.each<{ name: string; body: string; headers?: Record<string, string>; logged: object }>([
+    {
+      name: 'malformed JSON',
+      body: '{"jsonrpc":',
+      logged: { reason: 'parse_error' },
+    },
+    {
+      name: 'an empty body (Content-Length 0, read as {})',
+      body: '',
+      logged: { reason: 'invalid_jsonrpc' },
+    },
+    {
+      name: 'a JSON-RPC batch',
+      body: JSON.stringify([{ jsonrpc: '2.0', id: 1, method: 'ping' }]),
+      logged: { reason: 'batch' },
+    },
+    {
+      name: 'JSON that is not a JSON-RPC message',
+      body: JSON.stringify({ method: 'tools/list', hello: 'world' }),
+      logged: { reason: 'invalid_jsonrpc', rpcMethod: 'tools/list' },
+    },
+    {
+      name: 'a protocol version the SDK does not support (a newer client probing first)',
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      headers: { 'mcp-protocol-version': '2026-07-28' },
+      logged: {
+        reason: 'unsupported_protocol_version',
+        rpcMethod: 'tools/list',
+        protocolVersion: '2026-07-28',
+      },
+    },
+    {
+      name: 'a method and a protocol version of an unexpected shape',
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list\nforged entry' }),
+      headers: { 'mcp-protocol-version': 'draft <x>' },
+      logged: {
+        reason: 'unsupported_protocol_version',
+        rpcMethod: 'other',
+        protocolVersion: 'other',
+      },
+    },
+  ])('logs $name once, with the correlation ID', async ({ body, headers, logged }) => {
+    const { status, correlationId, logs } = await post(body, headers);
+
+    expect(status).toBe(400);
+    expect(badRequests(logs)).toEqual([
+      {
+        time: expect.any(String) as string,
+        level: 'warn',
+        event: 'mcp.bad_request',
+        correlationId,
+        ...logged,
+      },
+    ]);
+  });
+
+  it('logs a POST without any body (no Content-Length, no Transfer-Encoding)', async () => {
+    const { url, logs } = await start((_req, _res, next) => next());
+    const { host, pathname } = new URL(url);
+    const [hostname = '', port = ''] = host.split(':');
+    const head = await new Promise<string>((resolve, reject) => {
+      const socket = connect(Number(port), hostname, () => {
+        socket.end(
+          [
+            `POST ${pathname} HTTP/1.1`,
+            `Host: ${host}`,
+            'Content-Type: application/json',
+            'Accept: application/json, text/event-stream',
+            'Connection: close',
+            '',
+            '',
+          ].join('\r\n'),
+        );
+      });
+      let received = '';
+      socket.on('data', (chunk: Buffer) => (received += chunk.toString('latin1')));
+      socket.on('end', () => resolve(received));
+      socket.on('error', reject);
+    });
+
+    expect(head).toMatch(/^HTTP\/1\.1 400 /);
+    expect(badRequests(logs)).toMatchObject([{ level: 'warn', reason: 'empty_body' }]);
+  });
+
+  it('never logs the params, the body or the Authorization header', async () => {
+    const { status, logs } = await post(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'get_score', arguments: { scoreId: SECRET_PARAM } },
+      }),
+      { 'mcp-protocol-version': '2026-07-28', authorization: `Bearer ${SECRET_BEARER}` },
+    );
+
+    expect(status).toBe(400);
+    expect(badRequests(logs)).toHaveLength(1);
+    const text = JSON.stringify(logs);
+    expect(text).not.toContain(SECRET_PARAM);
+    expect(text).not.toContain(SECRET_BEARER);
+  });
+
+  it('logs nothing for a request the transport serves', async () => {
+    const { status, logs } = await post(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-06-18',
+          capabilities: {},
+          clientInfo: { name: 'app-test', version: '0.0.0' },
+        },
+      }),
+    );
+
+    expect(status).toBe(200);
+    expect(badRequests(logs)).toEqual([]);
   });
 });

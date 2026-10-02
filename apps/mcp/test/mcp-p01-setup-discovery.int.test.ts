@@ -173,14 +173,23 @@ describe('MCP-P01 tool manifest', () => {
 });
 
 describe('MCP-P01 View resource', () => {
-  /** The View loads its assets from this server: MCP_PUBLIC_URL's origin is the only allowed one. */
-  const uiMeta = () => ({
-    csp: { connectDomains: [app.origin], resourceDomains: [app.origin] },
-    prefersBorder: true,
+  /**
+   * The View loads its assets from this server: MCP_PUBLIC_URL's origin is the
+   * only allowed one, under MCP Apps' `ui.csp` and ChatGPT's `openai/widgetCSP`.
+   */
+  const resourceMeta = () => ({
+    ui: {
+      csp: { connectDomains: [app.origin], resourceDomains: [app.origin] },
+      prefersBorder: true,
+    },
+    'openai/widgetCSP': {
+      connect_domains: [app.origin],
+      resource_domains: [app.origin],
+      redirect_domains: [app.origin],
+    },
   });
 
   it('lists the score View as the only resource, with its CSP', async () => {
-    const ui = uiMeta();
     const { resources } = await client.listResources();
     expect(resources).toEqual([
       {
@@ -188,7 +197,7 @@ describe('MCP-P01 View resource', () => {
         name: 'Score view',
         mimeType: VIEW_MIME_TYPE,
         description: expect.any(String) as string,
-        _meta: { ui },
+        _meta: resourceMeta(),
       },
     ]);
   });
@@ -196,7 +205,6 @@ describe('MCP-P01 View resource', () => {
   it('reads the production-built single-file View, byte for byte except the injected asset origin', async () => {
     const placeholder = '<meta name="sheet-music-asset-origin" content="" />';
     expect(view.html.split(placeholder)).toHaveLength(2);
-    const ui = uiMeta();
 
     const { contents } = await client.readResource({ uri: VIEW_URI });
 
@@ -208,7 +216,7 @@ describe('MCP-P01 View resource', () => {
           placeholder,
           `<meta name="sheet-music-asset-origin" content="${app.origin}" />`,
         ),
-        _meta: { ui },
+        _meta: resourceMeta(),
       },
     ]);
   });

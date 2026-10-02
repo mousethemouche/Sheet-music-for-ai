@@ -67,7 +67,9 @@ switch, slot, label and their hooks), music-domain 28 kB, `cn` 26 kB (class
 merging with Tailwind conflict resolution), ext-apps 25 kB, score-ui 14 kB,
 the rest under 12 kB each (`packages/ui` 5.6 kB, class-variance-authority
 0.6 kB). Out of the document: the worklet 402.59 kB and the SoundFont
-9,182.09 kB, both cached immutably.
+9,182.09 kB, both cached immutably. Since 2026-10-02 the same font bytes come
+from renderer-vexflow (`src/font-data`, registered from bytes, §4) instead of
+VexFlow's `vexflow/bravura` entry: `index.html` 1,797.09 kB (+0.22 kB).
 
 ## 2. Resource and asset origin
 
@@ -87,7 +89,9 @@ tells it at `resources/read` time:
 - The same origin is the resource's `_meta.ui.csp`: `connectDomains` (the
   SoundFont `fetch`, `connect-src`) and `resourceDomains` (the worklet module,
   which the browser loads under `script-src`). Nothing else is declared:
-  fonts are embedded (§4), and there are no frames, images or base URI.
+  fonts are registered from embedded bytes (§4), and there are no frames,
+  images or base URI. The server declares the same origin under ChatGPT's
+  `openai/widgetCSP` key too (MCP_SERVER.md §6).
 - `readAssetOrigin(document)` (view side) accepts only an http(s) URL and
   keeps its origin; anything else is "no origin".
 
@@ -131,12 +135,21 @@ media-src 'self' data:; connect-src 'none'`; the reference `basic-host` of
 ext-apps adds the declared domains plus `'unsafe-eval' blob: data:` to
 `script-src` and `data: blob:` to `font-src`. The View needs:
 
-| Need                                   | Directive                                        | Why                                                              |
-| -------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------- |
-| inline module script and inline styles | `script-src`/`style-src 'unsafe-inline'`         | single-file build, React style attributes                        |
-| asset origin                           | `connect-src`, `script-src` (declared)           | SoundFont fetch, worklet module                                  |
-| `data:` fonts                          | `font-src data:`                                 | VexFlow's embedded fonts (`new FontFace(name, 'url(data:...)')`) |
-| WebAssembly in the worklet             | `script-src 'wasm-unsafe-eval'` (or unsafe-eval) | the processor decodes the `.sf3` Ogg Vorbis samples with WASM    |
+| Need                                   | Directive                                        | Why                                                           |
+| -------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------- |
+| inline module script and inline styles | `script-src`/`style-src 'unsafe-inline'`         | single-file build, React style attributes                     |
+| asset origin                           | `connect-src`, `script-src` (declared)           | SoundFont fetch, worklet module                               |
+| WebAssembly in the worklet             | `script-src 'wasm-unsafe-eval'` (or unsafe-eval) | the processor decodes the `.sf3` Ogg Vorbis samples with WASM |
+
+**Fonts need nothing.** The engraving fonts are registered from bytes
+embedded in the bundle (`new FontFace(name, ArrayBuffer)`, renderer-vexflow
+README "Fonts"), which no `font-src` or `connect-src` governs. Until
+2026-10-02 they were VexFlow's `url(data:...)` faces and needed
+`font-src data:`; ChatGPT's sandbox does not allow it (below), and every
+render there failed: "Notation unavailable", "The notation could not be
+drawn." (`RENDER_FAILED`: "Engraving failed: A network error occurred.").
+REN-I03 (renderer-vexflow) engraves the three ChatGPT drafts of that failure
+under ChatGPT's widget CSP.
 
 Measured on 2026-09-29 with the production build in a cross-origin
 `sandbox="allow-scripts allow-same-origin"` iframe, assets from a third
@@ -145,29 +158,72 @@ a committed test): with the basic-host CSP, and with a strict CSP plus
 `font-src data:` and `'wasm-unsafe-eval'`, the notation draws (23 noteheads
 of the rich fixture), the player reaches Ready, Play starts playback with
 the highlight, and teardown answers and unmounts, without console errors.
-With `font-src` limited to the asset origin every render fails ("The
-notation could not be drawn."). Without `'wasm-unsafe-eval'` the worklet's
-decoder cannot instantiate and sends nothing; the SpessaSynth driver waits
-at most 15 s (`DEFAULT_DECODER_START_TIMEOUT_MS`) for its ready report, then
-fails the load with `ASSET_LOAD_FAILED`, so the player shows "Audio
-unavailable" with Retry instead of staying in Loading (checked in
+Without `'wasm-unsafe-eval'` the worklet's decoder cannot instantiate and
+sends nothing; the SpessaSynth driver waits at most 15 s
+(`DEFAULT_DECODER_START_TIMEOUT_MS`) for its ready report, then fails the
+load with `ASSET_LOAD_FAILED`, so the player shows "Audio unavailable" with
+Retry instead of staying in Loading (checked in
 `spessasynth-engine.mcpui.test.ts` with a processor that never answers).
+
+Measured on 2026-10-02 with the production build in an emulation of
+ChatGPT's widget sandbox (below: about:blank iframe written with
+`document.write`, ChatGPT's own CSP with the asset origin declared, its
+injected styles), headless Chromium (manual smoke): the three ChatGPT drafts
+draw (76, 96 and 96 noteheads) in the light and dark themes, Bravura and both
+Academico faces are `loaded` and no CSP violation is reported; with the asset
+origin served from loopback, the player reaches Ready (light theme). The
+previous build showed "Notation unavailable" in the same frame, after three
+`font-src` violations on `data:`.
 
 **Release gate.** `McpUiResourceCsp` of ext-apps 1.7.5 has fields for
 domains only (`connectDomains`, `resourceDomains`, `frameDomains`,
-`baseUriDomains`): the View cannot declare `font-src data:` or
-`'wasm-unsafe-eval'`, and a host that applies the spec's default policy
-blocks both (no notation; audio unavailable after the timeout). The MCP-UI
-suite passes because its sandbox uses basic-host's permissive policy. The
-target host (Claude) has not been verified here: the target-host check of
-MCP_UI_TEST_PROCESS.md must confirm both directives before a release (#16).
-If the target host lacks `font-src data:`, the fix is to register the fonts
-from bytes (`new FontFace(name, arrayBuffer)` is not subject to `font-src`)
-or serve them from the asset origin, in renderer-vexflow (#5). The embedded
-font data is internal to the pinned `vexflow` package (its `exports` map
-does not publish it) and its font licenses are not in the npm package, so
-that change needs the font files and their OFL notices vendored first. No
-View-side change removes the WebAssembly need of the pinned processor.
+`baseUriDomains`): the View cannot declare `'wasm-unsafe-eval'`, and a host
+that applies the spec's default policy blocks it (audio unavailable after
+the timeout; the notation draws). The MCP-UI suite passes because its
+sandbox uses basic-host's permissive policy. ChatGPT's policy includes
+`'wasm-unsafe-eval'`. The target host (Claude) has not been verified here:
+the target-host check of MCP_UI_TEST_PROCESS.md must confirm it before a
+release (#16). No View-side change removes the WebAssembly need of the
+pinned processor.
+
+### ChatGPT (Apps SDK)
+
+ChatGPT reads the MCP Apps resource (`text/html;profile=mcp-app`,
+`_meta.ui.resourceUri`, the `ui/notifications/tool-result` bridge). What its
+sandbox does, read from its code on 2026-10-02 (web-sandbox.oaiusercontent.com,
+not a documented contract):
+
+- It creates an about:blank iframe (`sandbox="allow-scripts
+allow-same-origin allow-forms allow-popups ..."`), writes the resource text
+  into it with `document.write`, prepends its own CSS (system font on `html`,
+  `body` with `!important`, transparent background) and shows the frame on
+  `DOMContentLoaded`.
+- When it applies a CSP, it writes it as a `<meta http-equiv>` built from the
+  declared domains: `script-src` gets them plus `'unsafe-inline'`,
+  `'unsafe-eval'`, `'wasm-unsafe-eval'` and `blob:`; `connect-src`,
+  `style-src` and `font-src` get them (plus `*.oaiusercontent.com`);
+  `img-src` allows `data:`. `font-src data:` is reserved to OpenAI's own
+  apps: never count on it.
+- In developer mode the widget may carry a "CSP off" badge ("CSP
+  désactivée"): third-party reports say a developer-mode app gets no policy
+  unless "enforce CSP" is on, and a published app always gets one. The
+  2026-10-02 failure happened with that badge shown; whatever the account
+  setting was, the published app gets the policy, and the View now works
+  under it in the emulation. The badge is not explained: in Chromium the old
+  build fails only under a policy (without one, the three faces load), so
+  either the badge did not mean "no policy" or the owner's browser engine
+  differs (WebKit: Safari, the ChatGPT macOS app). Not verified yet in
+  ChatGPT itself or in WebKit (only Chromium is installed for Playwright
+  here): after deploying, open one score in ChatGPT web, and in the macOS
+  app if it is used; a WebKit run of REN-I03 needs Playwright's WebKit
+  build first.
+- The View's console is not forwarded to the conversation: a render failure
+  shows only in the DevTools of the widget frame (the player's alert says
+  "The notation could not be drawn.").
+- The server declares the asset origin under `_meta.ui.csp` and
+  `_meta['openai/widgetCSP']` (MCP_SERVER.md §6). Before submitting the app,
+  ChatGPT also requires a dedicated widget domain (`openai/widgetDomain`), not
+  set yet.
 
 ## 5. Behavior
 
@@ -262,10 +318,11 @@ sound itself is measured by the playback-spessasynth check.
 | ----------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | MCP-U01     | `apps/mcp/view/test/mcp-u01-view-payload.test.ts`, `...score-view.test.tsx` | parser acceptance/rejection, which result is shown, notices, mount only after validation                                                                                                                                                                     |
 | View wiring | `apps/mcp/view/test/mcp-view-wiring.test.tsx`                               | real `App` + official `AppBridge` over an in-memory transport: host theme to the player and its change, newer revision to the same player instance, teardown order and listener removal; asset-origin parsing; engine without origin fails without a request |
-| View doc    | `apps/mcp/src/view-resource.test.ts`                                        | origin injection, unchanged without origin, http non-loopback and missing placeholder rejected; prepared once, and a build without the placeholder fails `createMcpApp`                                                                                      |
+| View doc    | `apps/mcp/src/view-resource.test.ts`                                        | origin injection, unchanged without origin, http non-loopback and missing placeholder rejected; prepared once with the CSP under `ui.csp` and `openai/widgetCSP`, and a build without the placeholder fails `createMcpApp`                                   |
 | Assets      | `apps/mcp/src/static-assets.int.test.ts`                                    | on a real View build over HTTP: the worklet path the View requests and the SoundFont files with type, CORS, cache headers and bytes; 404 for traversal, unpublished files, directories, other methods; startup check                                         |
-| MCP-P01     | `apps/mcp/test/mcp-p01-setup-discovery.int.test.ts`                         | the resource read returns the build with the injected origin and the CSP                                                                                                                                                                                     |
+| MCP-P01     | `apps/mcp/test/mcp-p01-setup-discovery.int.test.ts`                         | the resource read returns the build with the injected origin and the CSP (`ui.csp`, `openai/widgetCSP`)                                                                                                                                                      |
 
 Not here, by design: the player's states and P-01 races (score-ui UI-01..05),
-engraving (REN-01..03, REN-I01), the engine (AUDIO-01..07 and its Chromium
-check), and the real iframe, CSP and bundle (MCP-UI-01..03).
+engraving (REN-01..05, REN-I01..03; REN-I03 under ChatGPT's widget CSP), the
+engine (AUDIO-01..07 and its Chromium check), and the real iframe, CSP and
+bundle (MCP-UI-01..03).

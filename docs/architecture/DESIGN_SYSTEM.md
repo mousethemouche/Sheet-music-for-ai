@@ -307,8 +307,10 @@ while every role and name still works. Both hosts catch it:
   score's minimum engraving width on a phone), the paper gets
   `data-overflow-start` / `data-overflow-end` from the scroll position and
   shows a 32 px fade to the paper color (`--paper`, set inline) on that
-  side; annotation stacks keep to the visible width (`placeAnnotations`'
-  `visibleWidth`), so their text wraps where it can be read.
+  side, from 2 px of hidden notation (UI-05 checks 23 px, the ChatGPT drafts
+  in a 360 px frame); annotation stacks keep to the visible width
+  (`placeAnnotations`' `visibleWidth`), so their text wraps where it can be
+  read.
 - **Playback band.** Behind the sounding notes, one rectangle per system
   (`placePlaybackBands`, `playback-band.ts`): from the notes' x/width,
   across the system's staves, padded 6 / 8 px, `primary-soft` with a faint

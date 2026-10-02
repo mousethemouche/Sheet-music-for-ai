@@ -2,8 +2,9 @@
  * The document served as the View resource (#11, docs/architecture/MCP_VIEW.md
  * §2): the server writes its asset origin into the placeholder of the built
  * View, and nothing else, once at startup: a build without the placeholder
- * stops the composition instead of failing every read. The resource read over
- * the protocol is MCP-P01.
+ * stops the composition instead of failing every read. The CSP of the asset
+ * origin is declared under MCP Apps' `_meta.ui.csp` and under ChatGPT's
+ * `openai/widgetCSP`. The resource read over the protocol is MCP-P01.
  */
 import { createPostgresPersistence } from '@sheet-music/persistence-postgres';
 import { createLogger } from '@sheet-music/server-common';
@@ -55,6 +56,22 @@ describe('View resource prepared at startup', () => {
         },
         prefersBorder: true,
       },
+      openaiWidgetCsp: {
+        connect_domains: ['https://mcp.example.com'],
+        resource_domains: ['https://mcp.example.com'],
+        redirect_domains: ['https://mcp.example.com'],
+      },
+    });
+  });
+
+  it('declares no origin under either CSP key without an asset origin', () => {
+    const { ui, openaiWidgetCsp } = prepareScoreView({ viewHtml: BUILT });
+
+    expect(ui.csp).toEqual({ connectDomains: [], resourceDomains: [] });
+    expect(openaiWidgetCsp).toEqual({
+      connect_domains: [],
+      resource_domains: [],
+      redirect_domains: [],
     });
   });
 

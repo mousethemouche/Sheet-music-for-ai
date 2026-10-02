@@ -146,7 +146,10 @@ worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame
 - `script-src 'wasm-unsafe-eval'`: the pinned SpessaSynth worklet decodes the
   SoundFont with WebAssembly (MCP_VIEW.md §4); the worklet module itself is
   same-origin. No inline script: Vite emits the bundle as a module file.
-- `font-src data:`: VexFlow's embedded engraving fonts.
+- `font-src 'self' data:`: not needed by the engraving fonts, which are
+  registered from bundled bytes (no `font-src` applies, MCP_VIEW.md §4);
+  `data:` is a leftover of the former `url(data:...)` faces, still asserted by
+  DEPLOY-01 and `verify-deployment.ts`. Dropping it is a separate change.
 - `style-src 'unsafe-inline'`: style attributes of the renderer and React.
 - No `Cross-Origin-Opener-Policy`: it would cut `window.opener` for MCP
   clients that open the OAuth consent in a popup.
@@ -447,8 +450,8 @@ Then, reused rather than repeated:
 - The shared external-host check (MCP_UI_TEST_PROCESS.md): connect the MCP
   server M in the target host, authenticate, show and play one score, edit,
   decline then approve a save, retrieve it in the web app W. It is also the
-  release gate for the host CSP (`font-src data:`, `'wasm-unsafe-eval'`,
-  MCP_VIEW.md §4). Record commit, hosts and result, no token; a missing host
+  release gate for the host CSP (`'wasm-unsafe-eval'`; fonts need no
+  directive, MCP_VIEW.md §4). Record commit, hosts and result, no token; a missing host
   access is reported, not passed.
 - The OAUTH-04 provider smoke and AUTH-UI-I01 (AUTH_MCP_OAUTH.md §4,
   WEB_AUTH.md) against S, W, A and M.

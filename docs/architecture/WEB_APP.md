@@ -167,7 +167,8 @@ Hosting (#16) must:
 - rewrite app routes (`/library`, `/scores/*`, `/about`) to `index.html`;
 - if it sets a CSP: `connect-src` the API origin, the Supabase project and
   `'self'` (SoundFont fetch); `script-src 'self'` covers the worklet module;
-  `font-src data:` for the embedded engraving fonts.
+  no `font-src` for the engraving fonts, registered from bundled bytes
+  (MCP_VIEW.md §4).
 
 ## Styling
 

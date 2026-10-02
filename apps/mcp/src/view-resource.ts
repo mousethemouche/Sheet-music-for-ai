@@ -65,20 +65,42 @@ export function viewDocument(config: ViewResourceConfig): string {
   );
 }
 
-function resourceMeta(config: ViewResourceConfig): McpUiResourceMeta {
-  const origins = config.assetOrigin === undefined ? [] : [assetOriginOf(config.assetOrigin)];
-  return {
-    // connect-src: the SoundFont fetch. resourceDomains (script-src, font-src...):
-    // the AudioWorklet module, which the browser loads under script-src.
-    csp: { connectDomains: origins, resourceDomains: origins },
-    prefersBorder: true,
-  };
+/**
+ * The resource CSP under the key of ChatGPT's Apps SDK, a defensive addition:
+ * ChatGPT documents MCP Apps' `_meta.ui.csp`, and whether it reads this key at
+ * all is unverified (MCP_SERVER.md §6). The same origins are declared under both.
+ * `redirect_domains`: pages of the asset origin the View opens with
+ * `openLink` (the SoundFont license) open without ChatGPT's link warning.
+ */
+export interface OpenAiWidgetCsp {
+  readonly connect_domains: readonly string[];
+  readonly resource_domains: readonly string[];
+  readonly redirect_domains: readonly string[];
 }
 
-/** The resource as served: the final document and its `_meta.ui`, computed once. */
+/** The resource as served: the final document and its metadata, computed once. */
 export interface ScoreViewResource {
   readonly document: string;
   readonly ui: McpUiResourceMeta;
+  /** `_meta['openai/widgetCSP']`, next to `_meta.ui` (additive: other hosts ignore it). */
+  readonly openaiWidgetCsp: OpenAiWidgetCsp;
+}
+
+function resourceMeta(config: ViewResourceConfig): Omit<ScoreViewResource, 'document'> {
+  const origins = config.assetOrigin === undefined ? [] : [assetOriginOf(config.assetOrigin)];
+  return {
+    ui: {
+      // connect-src: the SoundFont fetch. resourceDomains (script-src, font-src...):
+      // the AudioWorklet module, which the browser loads under script-src.
+      csp: { connectDomains: origins, resourceDomains: origins },
+      prefersBorder: true,
+    },
+    openaiWidgetCsp: {
+      connect_domains: origins,
+      resource_domains: origins,
+      redirect_domains: origins,
+    },
+  };
 }
 
 /**
@@ -89,11 +111,13 @@ export interface ScoreViewResource {
  * per request.
  */
 export function prepareScoreView(config: ViewResourceConfig): ScoreViewResource {
-  return { document: viewDocument(config), ui: resourceMeta(config) };
+  return { document: viewDocument(config), ...resourceMeta(config) };
 }
 
 export function registerScoreView(server: McpServer, view: ScoreViewResource): void {
-  const { document, ui } = view;
+  const { document, ui, openaiWidgetCsp } = view;
+  // On the listing and on the read content, as MCP Apps asks for `_meta.ui`.
+  const meta = { ui, 'openai/widgetCSP': openaiWidgetCsp };
   registerAppResource(
     server,
     'Score view',
@@ -101,7 +125,7 @@ export function registerScoreView(server: McpServer, view: ScoreViewResource): v
     {
       description:
         'Interactive piano score (notation and playback) for the results of create_score, edit_score and get_score.',
-      _meta: { ui },
+      _meta: meta,
     },
     () => ({
       contents: [
@@ -109,7 +133,7 @@ export function registerScoreView(server: McpServer, view: ScoreViewResource): v
           uri: SCORE_VIEW_URI,
           mimeType: RESOURCE_MIME_TYPE,
           text: document,
-          _meta: { ui },
+          _meta: meta,
         },
       ],
     }),
